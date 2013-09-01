@@ -6,6 +6,10 @@
 //  Copyright (c) 2013 AppPoetry LLC. All rights reserved.
 //
 
+// See: http://www.axelpeju.com/blog/2012/01/31/core-data-and-icloud/
+//      http://oleb.net/blog/2011/11/ios5-tech-talk-michael-jurewitz-on-icloud-storage/
+//      http://www.freelancemadscience.com/fmslabs_blog/2011/12/19/syncing-multiple-core-data-documents-using-icloud.html
+
 #import <Foundation/Foundation.h>
 @class APManagedDocument;
 
