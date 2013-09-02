@@ -8,12 +8,19 @@
 
 #import "APManagedDocument.h"
 #import "APManagedDocumentManager.h"
+#import "APManagedDocumentDelegate.h"
 #import <CoreData/CoreData.h>
+
+NSString * const APPersistentStoreCoordinatorStoresWillChangeNotification = @"APPersistentStoreCoordinatorStoresWillChangeNotification";
+NSString * const APPersistentStoreCoordinatorStoresDidChangeNotification = @"APPersistentStoreCoordinatorStoresDidChangeNotification";
 
 @interface APManagedDocument () {
     
 }
+@end
 
+@interface APManagedDocumentManager (hidden)
+- (void)_contextInitializedForDocument:(APManagedDocument*)document success:(BOOL)success;
 @end
 
 @implementation APManagedDocument
@@ -31,6 +38,13 @@
         // Since both open and save will use the same completion handlers we
         // create a named block to call on completion
         void (^completionHandler)(BOOL) = ^(BOOL success) {
+            if (success) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [manager _contextInitializedForDocument:self success:success];
+                });
+            } else {
+                NSLog(@"APManagedDocument failed to initialize.");
+            }
         };
         
         NSMutableDictionary *options = [NSMutableDictionary dictionaryWithObjectsAndKeys:

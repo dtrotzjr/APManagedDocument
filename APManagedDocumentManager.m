@@ -9,6 +9,12 @@
 #import "APManagedDocumentManager.h"
 #import "APManagedDocument.h"
 
+NSString * const APDocumentScanStarted          = @"APDocumentScanStarted";
+NSString * const APDocumentScanFinished         = @"APDocumentScanFinished";
+NSString * const APDocumentScanCancelled        = @"APDocumentScanCancelled";
+NSString * const APNewDocumentFound             = @"APNewDocumentFound";
+
+
 static APManagedDocumentManager* gInstance;
 
 @interface APManagedDocumentManager () {
@@ -39,10 +45,17 @@ static APManagedDocumentManager* gInstance;
         }
         NSString* documentSetIdentifier = [mainBundle objectForInfoDictionaryKey:@"APDocumentSetIdentifier"];
         if (documentSetIdentifier) {
-            self.documentSetIdentifier = documentsSubFolder;
+            self.documentSetIdentifier = documentSetIdentifier;
         } else {
             self.documentSetIdentifier = @"APMD_DATA";
         }
+        NSString* documentsExtention = [mainBundle objectForInfoDictionaryKey:@"APDocumentsExtention"];
+        if (documentSetIdentifier) {
+            self.documentsExtention = documentsExtention;
+        } else {
+            self.documentSetIdentifier = @"";
+        }
+        [self _prepDocumentsFolder];
     }
     return self;
 }
@@ -55,6 +68,25 @@ static APManagedDocumentManager* gInstance;
 
 + (APManagedDocumentManager*)sharedDocumentManager {
     return gInstance;
+}
+
+- (void)_contextInitializedForDocument:(APManagedDocument*)document success:(BOOL)success {
+    if ([self.documentDelegate respondsToSelector:@selector(documentInitialized:success:)]) {
+        [self.documentDelegate documentInitialized:document success:success];
+    }
+}
+
+- (void)_prepDocumentsFolder {
+    NSURL* documentsURL = self.documentsURL;
+    if (documentsURL && self.documentsSubFolder.length > 0) {
+        
+        if (![[NSFileManager defaultManager] fileExistsAtPath:[documentsURL path] isDirectory:nil]) {
+            NSError* error = nil;
+            if (![[NSFileManager defaultManager] createDirectoryAtPath:[documentsURL path] withIntermediateDirectories:YES attributes:nil error:&error]) {
+                NSLog(@"Failed to create Documents path: %@ - %@", [documentsURL path], [error description]);
+            }
+        }
+    }
 }
 
 - (NSURL*)documentsURL {
@@ -104,13 +136,16 @@ static APManagedDocumentManager* gInstance;
 
 - (void)setUseiCloud:(BOOL)useiCloud {
     if (_useiCloud != useiCloud) {
-        
+        _useiCloud = useiCloud;
+        // TODO: Handle moving documents in and out of the cloud...
     }
 }
 
 #pragma mark - Document Scan
 
 - (void)startDocumentScan {
+    [self stopDocumentScan];
+    [[NSNotificationCenter defaultCenter] postNotificationName:APDocumentScanStarted object:self];
     _documentIdentifiers = [[NSMutableArray alloc] init];
     if (self.useiCloud)
         [self _scanForUbiquitousFiles];
@@ -119,7 +154,9 @@ static APManagedDocumentManager* gInstance;
 }
 
 - (void)stopDocumentScan {
-    
+    [_documentQuery stopQuery];
+    _documentQuery = nil;
+    [[NSNotificationCenter defaultCenter] postNotificationName:APDocumentScanCancelled object:self];
 }
 
 - (void)_scanForLocalFiles {
@@ -134,6 +171,7 @@ static APManagedDocumentManager* gInstance;
         NSString* identifier = [self _findIdentifierInPath:[url path]];
         [self _processDocumentWithIdentifier:identifier];
     }
+    [[NSNotificationCenter defaultCenter] postNotificationName:APDocumentScanFinished object:self];
 }
 
 - (void)_scanForUbiquitousFiles {
@@ -152,16 +190,19 @@ static APManagedDocumentManager* gInstance;
 }
 
 - (void)_processDocumentWithIdentifier:(NSString*)identifier {
-    if (identifier)
+    if (identifier && ![_documentIdentifiers containsObject:identifier])
+    {
         [_documentIdentifiers addObject:identifier];
+        NSDictionary* userInfo = [NSDictionary dictionaryWithObject:identifier forKey:@"documentIdentifier"];
+        [[NSNotificationCenter defaultCenter] postNotificationName:APNewDocumentFound object:self userInfo:userInfo];
+    }
 }
 
 - (NSString*)_findIdentifierInPath:(NSString*)path {
     NSString* identifier = nil;
     NSError* error = nil;
     NSString* searchPattern = [NSString stringWithFormat:@"([^/.]+_%@_[A-F0-9]{8}_[A-F0-9]{8})",self.documentSetIdentifier];
-    if (self.documentsExtention.length > 0)
-        searchPattern = [NSString stringWithFormat:@"%@\\.(%@)", searchPattern, self.documentsExtention];
+
     NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:searchPattern
                                                                            options:NSRegularExpressionCaseInsensitive
                                                                              error:&error];
@@ -183,5 +224,10 @@ static APManagedDocumentManager* gInstance;
     }
 
     [_documentQuery enableUpdates];
+    [[NSNotificationCenter defaultCenter] postNotificationName:APDocumentScanFinished object:self];
+}
+
+- (NSArray*)documentIdentifiers {
+    return [NSArray arrayWithArray:_documentIdentifiers];
 }
 @end

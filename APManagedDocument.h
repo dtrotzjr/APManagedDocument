@@ -7,6 +7,7 @@
 //
 
 #import <UIKit/UIKit.h>
+#import "APManagedDocumentDelegate.h"
 
 extern NSString * const APPersistentStoreCoordinatorStoresWillChangeNotification;
 extern NSString * const APPersistentStoreCoordinatorStoresDidChangeNotification;

@@ -11,6 +11,25 @@
 //      http://www.freelancemadscience.com/fmslabs_blog/2011/12/19/syncing-multiple-core-data-documents-using-icloud.html
 
 #import <Foundation/Foundation.h>
+#import "APManagedDocumentDelegate.h"
+
+// Posted whenever a document scan is initiated. Interested clients should
+//          prepare for recieve APNewDocumentFound calls.
+//          userInfo is nil.
+extern NSString * const APDocumentScanStarted;
+
+// Posted whenever a document scan is finished.
+//          userInfo is nil.
+extern NSString * const APDocumentScanFinished;
+
+// Posted whenever a document scan was stopped prematurely.
+extern NSString * const APDocumentScanCancelled;
+
+// Posted whenever a new documenthas been found.
+//          userInfo dictionary contains an NSString object indicating the
+//          identifier of the newly found document.
+extern NSString * const APNewDocumentFound;
+
 @class APManagedDocument;
 
 @interface APManagedDocumentManager : NSObject
@@ -43,7 +62,7 @@
 
 // Public: Optional parameter to indicate what the document manager should use
 //          for a file extention for the managed documents it creates and
-//          manages.
+//          manages. Defaults to an empty string
 @property (nonatomic, copy) NSString* documentsExtention;
 
 // Public: If set the manager will move any local stores to the ubiquitous store
@@ -71,5 +90,11 @@
 
 // Public: Stops any document scans currently in progress.
 - (void)stopDocumentScan;
+
+// Public: After a document scan this array will be filled with the identiers of
+//          the documents that it found.
+- (NSArray*)documentIdentifiers;
+
+@property (nonatomic, weak) id<APManagedDocumentDelegate>documentDelegate;
 
 @end
