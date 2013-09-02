@@ -35,7 +35,7 @@ static APManagedDocumentManager* gInstance;
         if (transactionLogsSubFolder) {
             self.transactionLogsSubFolder = transactionLogsSubFolder;
         } else {
-            self.transactionLogsSubFolder = @"transactionLogs";
+            self.transactionLogsSubFolder = @"CoreDataSupport";
         }
         NSString* documentsSubFolder = [mainBundle objectForInfoDictionaryKey:@"APDocumentsSubFolder"];
         if (documentsSubFolder) {
