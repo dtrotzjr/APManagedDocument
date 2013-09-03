@@ -63,6 +63,7 @@ NSString * const APPersistentStoreCoordinatorStoresDidChangeNotification = @"APP
         }else {
             [self saveToURL:documentURL forSaveOperation:UIDocumentSaveForCreating completionHandler:completionHandler];
         }
+        _documentIdentifier = identifier;
     }
     return self;
 }
