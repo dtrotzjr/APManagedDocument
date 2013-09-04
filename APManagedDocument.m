@@ -68,4 +68,8 @@ NSString * const APPersistentStoreCoordinatorStoresDidChangeNotification = @"APP
     return self;
 }
 
+- (void)save {
+    [self updateChangeCount:UIDocumentChangeDone];
+}
+
 @end
