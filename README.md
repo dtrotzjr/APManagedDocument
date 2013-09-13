@@ -3,6 +3,9 @@ APManagedDocument
 
 APManagedDocument is meant to be a lightweight wrapper for UIManagedDocument created to abstract some of the messiness of creating and opening a UIManagedDocument.
 
+**Note:** *This library is for iOS 7+. Almost everything here is compatible with iOS 5 and higher but I made a decision to support some of the implicit behaviors found only in iOS 7 and above. Those behaviors make document storage in the cloud much simpler to manage and maintain as iOS handles what happens when iCloud is unavailable or when the user logs into a different account.  
+Another reason I chose to target iOS 7 and above is that I got the impression from an Apple engineer that Core Data sync in iOS 7 is vastly superior to previous iOS Core Data sync implementations.*
+
 
 ##APManagedDocumentManager:
 This singleton is used to create and open any managed documents it manages.
