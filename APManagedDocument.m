@@ -50,11 +50,9 @@ NSString * const APPersistentStoreCoordinatorStoresDidChangeNotification = @"APP
         NSMutableDictionary *options = [NSMutableDictionary dictionaryWithObjectsAndKeys:
                                         [NSNumber numberWithBool:YES], NSMigratePersistentStoresAutomaticallyOption,
                                         [NSNumber numberWithBool:YES], NSInferMappingModelAutomaticallyOption,
+                                        identifier, NSPersistentStoreUbiquitousContentNameKey,
+                                        manager.transactionLogsURL, NSPersistentStoreUbiquitousContentURLKey,
                                         nil];
-        if ([manager useiCloud]) {
-            [options setObject:identifier forKey:NSPersistentStoreUbiquitousContentNameKey];
-            [options setObject:manager.transactionLogsURL forKey:NSPersistentStoreUbiquitousContentURLKey];
-        }
         
         self.persistentStoreOptions = options;
         
