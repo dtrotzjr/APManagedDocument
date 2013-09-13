@@ -65,14 +65,6 @@ extern NSString * const APNewDocumentFound;
 //          manages. Defaults to an empty string
 @property (nonatomic, copy) NSString* documentsExtention;
 
-// Public: If set the manager will move any local stores to the ubiquitous store
-//          under the documentsSubFolder and any future documents are stored
-//          there as well. If this is unset then any documents in the ubiquitous
-//          store are moved to the local Documents sandbox under the
-//          documentsSubFolder.
-//  Throws an exception if this is enabled but iCloud is unavailable.
-@property (nonatomic, assign) BOOL useiCloud;
-
 // Public: A singleton object that is shared accross the application
 + (APManagedDocumentManager*)sharedDocumentManager;
 

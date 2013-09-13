@@ -134,23 +134,13 @@ static APManagedDocumentManager* gInstance;
     return [NSString stringWithFormat:@"%08X_%08X", (int32_t)[[NSDate date] timeIntervalSince1970] * 1000, (int32_t)random()];
 }
 
-- (void)setUseiCloud:(BOOL)useiCloud {
-    if (_useiCloud != useiCloud) {
-        _useiCloud = useiCloud;
-        // TODO: Handle moving documents in and out of the cloud...
-    }
-}
-
 #pragma mark - Document Scan
 
 - (void)startDocumentScan {
     [self stopDocumentScan];
     [[NSNotificationCenter defaultCenter] postNotificationName:APDocumentScanStarted object:self];
     _documentIdentifiers = [[NSMutableArray alloc] init];
-    if (self.useiCloud)
-        [self _scanForUbiquitousFiles];
-    else
-        [self _scanForLocalFiles];
+    [self _scanForUbiquitousFiles];
 }
 
 - (void)stopDocumentScan {
