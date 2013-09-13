@@ -31,18 +31,20 @@ When you look at the transaction logs they will be filed under the full name min
 <UbiquitousStorePath>/CoreDataSupport/<device_identifier>/Passwords_DATA_AF90C0C2_F02DE35B
 ```
 
-Once you have the Info.plist flags set you will want to set yourself up as a delegate for the manager and enable iCloud.
+Once you have the Info.plist flags set you will want to set yourself up as a delegate for the manager.
 
 ```
-    [[APManagedDocumentManager sharedDocumentManager] setUseiCloud:YES];
     [[APManagedDocumentManager sharedDocumentManager] setDocumentDelegate:gSharedCaddyManager];
 ```
 
 This will require you to implement the delegate protocol `documentInitialized:success:` in your delegate object.
 
-Currently the useiCloud flag isn't very useful when it is off and toggling between on and off does nothing at this time.
-
 The document manager automatically starts scanning for documents that it should manage and updates its documentIdentifiers accordingly. If you want to kick off a scan yourself you can call `[[APManagedDocumentManager sharedDocumentManager] startDocumentScan]`. You will probably want to listen for one or more of these notifications. `APDocumentScanStarted` `APDocumentScanFinished` `APDocumentScanCancelled`.
+
+### Managing iCloud Storage
+With iOS 7 and my implementation of APDocumentManager we can let iOS manage the storing of our iCloud documents and use the implicit fallback store behavior.
+
+The user can still control iCloud storage but not from our application, instead we will rely on the iOS 7 iCloud 'Documents and Data' per app setting. This keeps our code simple. We let the APDocumentManager store our documents in the local store, and it will set the approriate iCloud persistent store coordinator options once and for all.
 
 
 ##APManagedDocument
