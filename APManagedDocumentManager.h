@@ -56,7 +56,6 @@ extern NSString * const APNewDocumentFound;
 //          based on the current state of the document manager
 - (NSURL*)urlForDocumentWithIdentifier:(NSString*)identifier;
 
-
 - (NSDictionary*)optionsForDocumentWithIdentifier:(NSString*)identifier;
 
 // Public: Specifies an identifier used to identify a document as part of the
@@ -78,6 +77,10 @@ extern NSString * const APNewDocumentFound;
 // Public: Opens an existing managed document and manages it in regards to
 //          iCloud storage.
 - (APManagedDocument*)openExistingManagedDocumentWithIdentifier:(NSString*)identifier;
+
+// Public: Deletes an existing managed document and kicks off a document scan
+//          after it is finished.
+- (BOOL)deleteManagedDocumentWithIdentifier:(NSString*)identifier;
 
 // Public: Kicks off a scan to find documents that this manager should track
 //          and manage.

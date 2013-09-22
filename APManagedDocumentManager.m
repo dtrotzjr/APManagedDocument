@@ -125,6 +125,19 @@ static APManagedDocumentManager* gInstance;
     return [[APManagedDocument alloc] initWithDocumentIdentifier:identifier];
 }
 
+- (BOOL)deleteManagedDocumentWithIdentifier:(NSString*)identifier {
+    NSError* err = nil;
+    NSURL* documentURL = [self urlForDocumentWithIdentifier:identifier];
+    NSDictionary* options = [self optionsForDocumentWithIdentifier:identifier];
+    BOOL success = [NSPersistentStoreCoordinator removeUbiquitousContentAndPersistentStoreAtURL:documentURL options:options error:&err];
+    if (success) {
+        [self startDocumentScan];
+    }else {
+        NSLog(@"Failed to delete: %@", [err description]);
+    }
+    return success;
+}
+
 - (NSDictionary*)optionsForDocumentWithIdentifier:(NSString*)identifier {
     return [NSDictionary dictionaryWithObjectsAndKeys:
             [NSNumber numberWithBool:YES], NSMigratePersistentStoresAutomaticallyOption,
