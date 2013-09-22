@@ -209,45 +209,54 @@ static __strong APManagedDocumentManager* gInstance;
                                                        error:nil];
     
     for (NSURL* url in contents) {
-        NSString* identifier = [self _findIdentifierInPath:[url path]];
         // Determine if this is can be considered a local store
-        NSArray *keys = @[NSURLPathKey, NSURLNameKey, NSURLParentDirectoryURLKey];
-        NSDirectoryEnumerator *enumerator = [fileManager
-                                             enumeratorAtURL:url
-                                             includingPropertiesForKeys:keys
-                                             options:0
-                                             errorHandler:^(NSURL *url, NSError *error) {
-                                                 NSLog(@"Local file scan error: %@", [error description]);
-                                                 return YES;
-                                             }];
-        for (NSURL *subURL in enumerator) {
-            NSError *error;
-            NSString* fileName = nil;
-            NSString* urlPathKey = nil;
-            if (![subURL getResourceValue:&fileName forKey:NSURLNameKey error:&error]) {
-                NSLog(@"Something went wrong. NSURLNameKey seems to be missing. %@", [error description]);
+        NSString* identifier = [self _identifierIfURLIsForValidLocalStorePath:url];
+        if (identifier)
+            [self _processDocumentWithIdentifier:identifier];
+    }
+    [[NSNotificationCenter defaultCenter] postNotificationName:APDocumentScanFinished object:self];
+}
+
+- (NSString*)_identifierIfURLIsForValidLocalStorePath:(NSURL*)url {
+    NSString* identifier = nil;
+    NSFileManager* fileManager = [NSFileManager defaultManager];
+    NSArray *keys = @[NSURLPathKey, NSURLNameKey, NSURLParentDirectoryURLKey];
+    NSDirectoryEnumerator *enumerator = [fileManager
+                                         enumeratorAtURL:url
+                                         includingPropertiesForKeys:keys
+                                         options:0
+                                         errorHandler:^(NSURL *url, NSError *error) {
+                                             NSLog(@"Local file scan error: %@", [error description]);
+                                             return YES;
+                                         }];
+    for (NSURL *subURL in enumerator) {
+        NSError *error;
+        NSString* fileName = nil;
+        NSString* urlPathKey = nil;
+        if (![subURL getResourceValue:&fileName forKey:NSURLNameKey error:&error]) {
+            NSLog(@"Something went wrong. NSURLNameKey seems to be missing. %@", [error description]);
+        }
+        else if ([fileName isEqualToString:[APManagedDocument persistentStoreName]]) {
+            if (![subURL getResourceValue:&urlPathKey forKey:NSURLPathKey error:&error]) {
+                NSLog(@"Something went wrong. NSURLPathKey seems to be missing. %@", [error description]);
             }
-            else if ([fileName isEqualToString:[APManagedDocument persistentStoreName]]) {
-                if (![subURL getResourceValue:&urlPathKey forKey:NSURLPathKey error:&error]) {
-                    NSLog(@"Something went wrong. NSURLPathKey seems to be missing. %@", [error description]);
-                }
-                else
-                {
-                    NSString* searchPattern = [NSString stringWithFormat:@"([^/.]+_%@_[A-F0-9]{8}_[A-F0-9]{8}).*CoreDataUbiquitySupport.*/local/store/%@",self.documentSetIdentifier, [APManagedDocument persistentStoreName]];
-                    
-                    NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:searchPattern
-                                                                                           options:NSRegularExpressionCaseInsensitive
-                                                                                             error:&error];
-                    NSTextCheckingResult* match = [regex firstMatchInString:urlPathKey options:0 range:NSMakeRange(0, [urlPathKey length])];
-                    if (match && !NSEqualRanges([match rangeAtIndex:1], NSMakeRange(NSNotFound, 0))) {
-                        identifier = [urlPathKey substringWithRange:[match rangeAtIndex:1]];
-                        [self _processDocumentWithIdentifier:identifier];
-                    }
+            else
+            {
+                NSString* searchPattern = [NSString stringWithFormat:@"([^/.]+_%@_[A-F0-9]{8}_[A-F0-9]{8}).*CoreDataUbiquitySupport.*/local/store/%@",self.documentSetIdentifier, [APManagedDocument persistentStoreName]];
+                
+                NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:searchPattern
+                                                                                       options:NSRegularExpressionCaseInsensitive
+                                                                                         error:&error];
+                NSTextCheckingResult* match = [regex firstMatchInString:urlPathKey options:0 range:NSMakeRange(0, [urlPathKey length])];
+                if (match && !NSEqualRanges([match rangeAtIndex:1], NSMakeRange(NSNotFound, 0))) {
+                    identifier = [urlPathKey substringWithRange:[match rangeAtIndex:1]];
+                    break;
                 }
             }
         }
     }
-    [[NSNotificationCenter defaultCenter] postNotificationName:APDocumentScanFinished object:self];
+    return identifier;
+}
 }
 
 - (void)_scanForUbiquitousFiles {
