@@ -125,6 +125,15 @@ static APManagedDocumentManager* gInstance;
     return [[APManagedDocument alloc] initWithDocumentIdentifier:identifier];
 }
 
+- (NSDictionary*)optionsForDocumentWithIdentifier:(NSString*)identifier {
+    return [NSDictionary dictionaryWithObjectsAndKeys:
+            [NSNumber numberWithBool:YES], NSMigratePersistentStoresAutomaticallyOption,
+            [NSNumber numberWithBool:YES], NSInferMappingModelAutomaticallyOption,
+            identifier, NSPersistentStoreUbiquitousContentNameKey,
+            self.transactionLogsURL, NSPersistentStoreUbiquitousContentURLKey,
+            nil];
+}
+
 - (NSString *)_generateUniqueIdentifier {
     if(!_randomSeeded)
     {

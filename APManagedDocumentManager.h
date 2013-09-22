@@ -56,6 +56,9 @@ extern NSString * const APNewDocumentFound;
 //          based on the current state of the document manager
 - (NSURL*)urlForDocumentWithIdentifier:(NSString*)identifier;
 
+
+- (NSDictionary*)optionsForDocumentWithIdentifier:(NSString*)identifier;
+
 // Public: Specifies an identifier used to identify a document as part of the
 //          user's set of documents. Defaults to "APMD_DATA".
 @property (nonatomic, copy) NSString* documentSetIdentifier;

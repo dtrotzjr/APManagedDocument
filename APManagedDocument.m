@@ -57,14 +57,7 @@ static __strong NSString* gPersistentStoreName = @"persistentStore";
             }
         };
         
-        NSMutableDictionary *options = [NSMutableDictionary dictionaryWithObjectsAndKeys:
-                                        [NSNumber numberWithBool:YES], NSMigratePersistentStoresAutomaticallyOption,
-                                        [NSNumber numberWithBool:YES], NSInferMappingModelAutomaticallyOption,
-                                        identifier, NSPersistentStoreUbiquitousContentNameKey,
-                                        manager.transactionLogsURL, NSPersistentStoreUbiquitousContentURLKey,
-                                        nil];
-        
-        self.persistentStoreOptions = options;
+        self.persistentStoreOptions = [manager optionsForDocumentWithIdentifier:identifier];
         
         if ([[NSFileManager defaultManager] fileExistsAtPath:[documentURL path]]) {
             [self openWithCompletionHandler:completionHandler];
