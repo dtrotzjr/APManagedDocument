@@ -5,7 +5,8 @@
 //  Created by David Trotz on 8/31/13.
 //  Copyright (c) 2013 AppPoetry LLC. All rights reserved.
 //
-
+#import <UIKit/UIKit.h>
+#import <CoreData/CoreData.h>
 #import "APManagedDocumentManager.h"
 #import "APManagedDocument.h"
 
@@ -15,12 +16,13 @@ NSString * const APDocumentScanCancelled        = @"APDocumentScanCancelled";
 NSString * const APNewDocumentFound             = @"APNewDocumentFound";
 
 
-static APManagedDocumentManager* gInstance;
+static __strong APManagedDocumentManager* gInstance;
 
 @interface APManagedDocumentManager () {
     BOOL _randomSeeded;
     NSMutableArray* _documentIdentifiers;
     NSMetadataQuery* _documentQuery;
+    id<NSObject,NSCopying,NSCoding> _currentUbiquityIdentityToken;
 }
 
 @end
@@ -56,6 +58,11 @@ static APManagedDocumentManager* gInstance;
             self.documentSetIdentifier = @"";
         }
         [self _prepDocumentsFolder];
+        _currentUbiquityIdentityToken = [[NSFileManager defaultManager] ubiquityIdentityToken];
+        [[NSNotificationCenter defaultCenter] addObserver: self
+                                                 selector: @selector (_iCloudAccountAvailabilityChanged:)
+                                                     name: NSUbiquityIdentityDidChangeNotification
+                                                   object: nil];
     }
     return self;
 }
@@ -73,6 +80,14 @@ static APManagedDocumentManager* gInstance;
 - (void)_contextInitializedForDocument:(APManagedDocument*)document success:(BOOL)success {
     if ([self.documentDelegate respondsToSelector:@selector(documentInitialized:success:)]) {
         [self.documentDelegate documentInitialized:document success:success];
+    }
+}
+
+- (void)_iCloudAccountAvailabilityChanged:(NSNotification*)notif {
+    if (![_currentUbiquityIdentityToken isEqual:[[NSFileManager defaultManager] ubiquityIdentityToken]]) {
+        // Update the current token and rescan for documents.
+        _currentUbiquityIdentityToken = [[NSFileManager defaultManager] ubiquityIdentityToken];
+        [self startDocumentScan];
     }
 }
 
@@ -159,10 +174,18 @@ static APManagedDocumentManager* gInstance;
 #pragma mark - Document Scan
 
 - (void)startDocumentScan {
-    [self stopDocumentScan];
     [[NSNotificationCenter defaultCenter] postNotificationName:APDocumentScanStarted object:self];
     _documentIdentifiers = [[NSMutableArray alloc] init];
-    [self _scanForUbiquitousFiles];
+    
+    if (_currentUbiquityIdentityToken != nil) {
+        // We have iCloud access so we will do a metadata query
+        [self stopDocumentScan];
+        [self _scanForUbiquitousFiles];
+    } else {
+        // iCloud is currently unavailable (user is signed out or has disabled
+        //   iCloud for our app). We need to do an intelligent local file scan.
+        [self _scanForLocalFiles];
+    }
 }
 
 - (void)stopDocumentScan {
@@ -172,16 +195,51 @@ static APManagedDocumentManager* gInstance;
 }
 
 - (void)_scanForLocalFiles {
-    
+    NSFileManager* fileManager = [NSFileManager defaultManager];
     NSArray* contents =
-    [[NSFileManager defaultManager] contentsOfDirectoryAtURL:self.documentsURL
+    [fileManager contentsOfDirectoryAtURL:self.documentsURL
                                   includingPropertiesForKeys:nil
                                                      options:0
                                                        error:nil];
     
     for (NSURL* url in contents) {
         NSString* identifier = [self _findIdentifierInPath:[url path]];
-        [self _processDocumentWithIdentifier:identifier];
+        // Determine if this is can be considered a local store
+        NSArray *keys = @[NSURLPathKey, NSURLNameKey, NSURLParentDirectoryURLKey];
+        NSDirectoryEnumerator *enumerator = [fileManager
+                                             enumeratorAtURL:url
+                                             includingPropertiesForKeys:keys
+                                             options:0
+                                             errorHandler:^(NSURL *url, NSError *error) {
+                                                 NSLog(@"Local file scan error: %@", [error description]);
+                                                 return YES;
+                                             }];
+        for (NSURL *subURL in enumerator) {
+            NSError *error;
+            NSString* fileName = nil;
+            NSString* urlPathKey = nil;
+            if (![subURL getResourceValue:&fileName forKey:NSURLNameKey error:&error]) {
+                NSLog(@"Something went wrong. NSURLNameKey seems to be missing. %@", [error description]);
+            }
+            else if ([fileName isEqualToString:[APManagedDocument persistentStoreName]]) {
+                if (![subURL getResourceValue:&urlPathKey forKey:NSURLPathKey error:&error]) {
+                    NSLog(@"Something went wrong. NSURLPathKey seems to be missing. %@", [error description]);
+                }
+                else
+                {
+                    NSString* searchPattern = [NSString stringWithFormat:@"([^/.]+_%@_[A-F0-9]{8}_[A-F0-9]{8}).*CoreDataUbiquitySupport.*/local/store/%@",self.documentSetIdentifier, [APManagedDocument persistentStoreName]];
+                    
+                    NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:searchPattern
+                                                                                           options:NSRegularExpressionCaseInsensitive
+                                                                                             error:&error];
+                    NSTextCheckingResult* match = [regex firstMatchInString:urlPathKey options:0 range:NSMakeRange(0, [urlPathKey length])];
+                    if (match && !NSEqualRanges([match rangeAtIndex:1], NSMakeRange(NSNotFound, 0))) {
+                        identifier = [urlPathKey substringWithRange:[match rangeAtIndex:1]];
+                        [self _processDocumentWithIdentifier:identifier];
+                    }
+                }
+            }
+        }
     }
     [[NSNotificationCenter defaultCenter] postNotificationName:APDocumentScanFinished object:self];
 }
@@ -192,8 +250,10 @@ static APManagedDocumentManager* gInstance;
         [_documentQuery setPredicate:[NSPredicate predicateWithFormat:@"%K like %@",
                                         NSMetadataItemFSNameKey,
                                         @"*"]];
-        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_processQuery:) name:NSMetadataQueryDidFinishGatheringNotification object:_documentQuery];
-        
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_queryStarted:) name:NSMetadataQueryDidStartGatheringNotification object:_documentQuery];
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_queryUpdated:) name:NSMetadataQueryDidUpdateNotification object:_documentQuery];
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_queryGatheringProgress:) name:NSMetadataQueryGatheringProgressNotification object:_documentQuery];
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_queryFinished:) name:NSMetadataQueryDidFinishGatheringNotification object:_documentQuery];
         dispatch_async(dispatch_get_main_queue(), ^{
             if (![_documentQuery startQuery]) {
                 NSLog(@"NSMetadataQuery failed to start!");
@@ -225,7 +285,19 @@ static APManagedDocumentManager* gInstance;
     return identifier;
 }
 
-- (void)_processQuery:(NSNotification*)notif {
+- (void)_queryStarted:(NSNotification*)notif {
+    NSLog(@"Scan started gathering...");
+}
+
+- (void)_queryUpdated:(NSNotification*)notif {
+    NSLog(@"Scan did update...");
+}
+
+- (void)_queryGatheringProgress:(NSNotification*)notif {
+    NSLog(@"Scan gathering progress...");
+}
+
+- (void)_queryFinished:(NSNotification*)notif {
     [_documentQuery disableUpdates];
     NSArray *results = [_documentQuery results];
 
