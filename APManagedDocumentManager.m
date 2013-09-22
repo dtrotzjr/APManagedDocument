@@ -159,6 +159,14 @@ static __strong APManagedDocumentManager* gInstance;
     return success;
 }
 
+- (void)prepareForMigrationToNewiCloudAccount {
+    for (NSString* identifier in _documentIdentifiers) {
+        APManagedDocument* doc = [self openExistingManagedDocumentWithIdentifier:identifier];
+        doc.persistentStoreOptions = @{ NSPersistentStoreRemoveUbiquitousMetadataOption : [NSNumber numberWithBool:1] };
+        [doc closeWithCompletionHandler:^(BOOL success) {}];
+    }
+}
+
 - (NSDictionary*)optionsForDocumentWithIdentifier:(NSString*)identifier {
     return [NSDictionary dictionaryWithObjectsAndKeys:
             [NSNumber numberWithBool:YES], NSMigratePersistentStoresAutomaticallyOption,
@@ -186,6 +194,7 @@ static __strong APManagedDocumentManager* gInstance;
     if (_currentUbiquityIdentityToken != nil) {
         // We have iCloud access so we will do a metadata query
         [self stopDocumentScan];
+        [self _scanForOrphanedLocalFiles];
         [self _scanForUbiquitousFiles];
     } else {
         // iCloud is currently unavailable (user is signed out or has disabled
@@ -257,6 +266,32 @@ static __strong APManagedDocumentManager* gInstance;
     }
     return identifier;
 }
+
+- (void) _scanForOrphanedLocalFiles {
+    if ([[NSFileManager defaultManager] ubiquityIdentityToken]) {
+        NSFileManager* fileManager = [NSFileManager defaultManager];
+        NSArray* contents =
+        [fileManager contentsOfDirectoryAtURL:self.documentsURL
+                   includingPropertiesForKeys:nil
+                                      options:0
+                                        error:nil];
+        
+        for (NSURL* url in contents) {
+            // Determine if this is can be considered a local store
+            NSString* identifier = [self _identifierIfURLIsForValidLocalStorePath:url];
+            if (identifier){
+                // Opening and then closing the document is enough to get it moved over to the
+                // iCloud space.
+                _documentOpenedOverride = ^(APManagedDocument* doc, BOOL success) {
+                    [doc closeWithCompletionHandler:^(BOOL success){
+                        if (!success)
+                            NSLog(@"Something went wrong. The document failed to close");
+                    }];
+                };
+                [self openExistingManagedDocumentWithIdentifier:identifier];
+            }
+        }
+    }
 }
 
 - (void)_scanForUbiquitousFiles {
