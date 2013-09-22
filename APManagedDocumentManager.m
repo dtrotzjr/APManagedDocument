@@ -23,6 +23,7 @@ static __strong APManagedDocumentManager* gInstance;
     NSMutableArray* _documentIdentifiers;
     NSMetadataQuery* _documentQuery;
     id<NSObject,NSCopying,NSCoding> _currentUbiquityIdentityToken;
+    void (^_documentOpenedOverride)(APManagedDocument*,BOOL);
 }
 
 @end
@@ -78,8 +79,13 @@ static __strong APManagedDocumentManager* gInstance;
 }
 
 - (void)_contextInitializedForDocument:(APManagedDocument*)document success:(BOOL)success {
-    if ([self.documentDelegate respondsToSelector:@selector(documentInitialized:success:)]) {
-        [self.documentDelegate documentInitialized:document success:success];
+    if (_documentOpenedOverride) {
+        _documentOpenedOverride(document, success);
+        _documentOpenedOverride = nil;
+    } else {
+        if ([self.documentDelegate respondsToSelector:@selector(documentInitialized:success:)]) {
+            [self.documentDelegate documentInitialized:document success:success];
+        }
     }
 }
 
