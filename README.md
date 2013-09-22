@@ -56,6 +56,8 @@ The user can still control iCloud storage but not from our application, instead 
 
 `Using local storage: 0` on the console indicates that the app is ready to start sending/recieving core data transactions.
 
+Much of the new iOS 7 fallback store behavior that I am relying on in this project can be found in the WWDC 2013 Video - Session 207 [What’s New in Core Data and iCloud](https://developer.apple.com/wwdc/videos/index.php?id=207)
+
 ##APManagedDocument
 
 ###Creation:
@@ -84,8 +86,3 @@ Currently this protcol has only one method
 ```
 
 This will be called whenever a document is opened or saved for creation.
-
-##iOS NDA
-Until iOS 7 ships I cannot go into how some of this works or any of the notifications that you will want to observe. 
-
-###To be contniued...
