@@ -32,4 +32,6 @@ extern NSString * const APPersistentStoreCoordinatorStoresDidChangeNotification;
 - (id)initWithDocumentIdentifier:(NSString*)identifier;
 
 - (void)save;
+
++ (NSString*)persistentStoreName;
 @end

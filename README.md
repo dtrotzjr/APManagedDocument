@@ -24,6 +24,8 @@ You will need to add the following keys to your Info.plist file if you want to o
 
 * **APDocumentsExtention** This string is used as the file extention for all managed documents created bt the document manager.
 
+* **APManagedDocumentPersistentStoreName** This string represents the name of the persistent store sqlite file you want to use. It correlates to the `+(NSString*)persistentStore` of the `UIManagedDocument` class. Whenever `APManagedDocument` is asked for its persistent store name this value is what is returned. The default value for this option is 'persistentStore'.
+
 ***Note:*** Based on the values provided above a document name will take the form of: 
 `[DocumentName]_[DocumentSetIdentifier]_[UUID].[Extention]`
 For example in Password Caddy my files look something like:`Passwords_DATA_AF90C0C2_F02DE35B.caddy`

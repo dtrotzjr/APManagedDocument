@@ -14,6 +14,8 @@
 NSString * const APPersistentStoreCoordinatorStoresWillChangeNotification = @"APPersistentStoreCoordinatorStoresWillChangeNotification";
 NSString * const APPersistentStoreCoordinatorStoresDidChangeNotification = @"APPersistentStoreCoordinatorStoresDidChangeNotification";
 
+static __strong NSString* gPersistentStoreName = @"persistentStore";
+
 @interface APManagedDocument () {
     
 }
@@ -28,6 +30,14 @@ NSString * const APPersistentStoreCoordinatorStoresDidChangeNotification = @"APP
 //          exception.
 - (id)initWithFileURL:(NSURL *)url {
     @throw [NSException exceptionWithName:@"Invalid initializer called." reason:@"Use APManagedDocument's initWithDocumentName: instead." userInfo:nil];
+}
+
++ (void)initialize {
+    NSBundle* mainBundle = [NSBundle mainBundle];
+    NSString* tmp = [mainBundle objectForInfoDictionaryKey:@"APManagedDocumentPersistentStoreName"];
+    if ([tmp length] > 0) {
+        gPersistentStoreName = tmp;
+    }
 }
 
 - (id)initWithDocumentIdentifier:(NSString*)identifier {
@@ -70,4 +80,7 @@ NSString * const APPersistentStoreCoordinatorStoresDidChangeNotification = @"APP
     [self updateChangeCount:UIDocumentChangeDone];
 }
 
++ (NSString*)persistentStoreName {
+    return gPersistentStoreName;
+}
 @end
