@@ -52,6 +52,10 @@ With iOS 7 and my implementation of APDocumentManager we can let iOS manage the 
 The user can still control iCloud storage but not from our application, instead we will rely on the iOS 7 iCloud 'Documents and Data' per app setting. This keeps our code simple. We let the APDocumentManager store our documents in the local store, and it will set the approriate iCloud persistent store coordinator options once and for all.
 
 
+`Using local storage: 1` on the console indicates that the app is currently using the local store. In this state the app will not be pushing/pulling any transactions to/from iCloud
+
+`Using local storage: 0` on the console indicates that the app is ready to start sending/recieving core data transactions.
+
 ##APManagedDocument
 
 ###Creation:
