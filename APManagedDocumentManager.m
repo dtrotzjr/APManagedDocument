@@ -24,6 +24,7 @@ static __strong APManagedDocumentManager* gInstance;
     NSMetadataQuery* _documentQuery;
     id<NSObject,NSCopying,NSCoding> _currentUbiquityIdentityToken;
     void (^_documentOpenedOverride)(APManagedDocument*,BOOL);
+    BOOL _orphanedLocalFileScanDone;
 }
 
 @end
@@ -160,12 +161,20 @@ static __strong APManagedDocumentManager* gInstance;
 }
 
 - (NSDictionary*)optionsForDocumentWithIdentifier:(NSString*)identifier {
-    return [NSDictionary dictionaryWithObjectsAndKeys:
-            [NSNumber numberWithBool:YES], NSMigratePersistentStoresAutomaticallyOption,
-            [NSNumber numberWithBool:YES], NSInferMappingModelAutomaticallyOption,
-            identifier, NSPersistentStoreUbiquitousContentNameKey,
-            self.transactionLogsURL, NSPersistentStoreUbiquitousContentURLKey,
-            nil];
+    NSDictionary* options = @{
+                             NSMigratePersistentStoresAutomaticallyOption   :[NSNumber numberWithBool:YES],
+                             NSInferMappingModelAutomaticallyOption         :[NSNumber numberWithBool:YES]
+                             };
+    
+    if (_currentUbiquityIdentityToken != nil) {
+        options = @{
+                 NSMigratePersistentStoresAutomaticallyOption   :[NSNumber numberWithBool:YES],
+                 NSInferMappingModelAutomaticallyOption         :[NSNumber numberWithBool:YES],
+                 NSPersistentStoreUbiquitousContentNameKey      :identifier,
+                 NSPersistentStoreUbiquitousContentURLKey       :self.transactionLogsSubFolder
+                 };
+    }
+    return  options;
 }
 
 - (NSString *)_generateUniqueIdentifier {
@@ -186,7 +195,8 @@ static __strong APManagedDocumentManager* gInstance;
     if (_currentUbiquityIdentityToken != nil) {
         // We have iCloud access so we will do a metadata query
         [self stopDocumentScan];
-        [self _scanForOrphanedLocalFiles];
+        if (!_orphanedLocalFileScanDone)
+            [self _migrateOrphanedLocalFiles];
         [self _scanForUbiquitousFiles];
     } else {
         // iCloud is currently unavailable (user is signed out or has disabled
@@ -243,7 +253,12 @@ static __strong APManagedDocumentManager* gInstance;
             }
             else
             {
-                NSString* searchPattern = [NSString stringWithFormat:@"([^/.]+_%@_[A-F0-9]{8}_[A-F0-9]{8}).*CoreDataUbiquitySupport.*/local/store/%@",self.documentSetIdentifier, [APManagedDocument persistentStoreName]];
+                NSString* searchPattern = [NSString stringWithFormat:@"([^/.]+_%@_[A-F0-9]{8}_[A-F0-9]{8})%@/StoreContent/%@",
+                                           self.documentSetIdentifier,
+                                           self.documentsExtention ?
+                                                [NSString stringWithFormat:@"\\.%@", self.documentsExtention] :
+                                                @"",
+                                           [APManagedDocument persistentStoreName]];
                 
                 NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:searchPattern
                                                                                        options:NSRegularExpressionCaseInsensitive
@@ -259,7 +274,7 @@ static __strong APManagedDocumentManager* gInstance;
     return identifier;
 }
 
-- (void) _scanForOrphanedLocalFiles {
+- (void) _migrateOrphanedLocalFiles {
     if ([[NSFileManager defaultManager] ubiquityIdentityToken]) {
         NSFileManager* fileManager = [NSFileManager defaultManager];
         NSArray* contents =
@@ -268,6 +283,8 @@ static __strong APManagedDocumentManager* gInstance;
                                       options:0
                                         error:nil];
         
+        __block int orphanedFilesOpened = 0;
+        __unsafe_unretained typeof(self) weakSelf = self;
         for (NSURL* url in contents) {
             // Determine if this is can be considered a local store
             NSString* identifier = [self _identifierIfURLIsForValidLocalStorePath:url];
@@ -278,8 +295,19 @@ static __strong APManagedDocumentManager* gInstance;
                     [doc closeWithCompletionHandler:^(BOOL success){
                         if (!success)
                             NSLog(@"Something went wrong. The document failed to close");
+                        orphanedFilesOpened--;
+                        if (orphanedFilesOpened == 0) {
+                            weakSelf->_orphanedLocalFileScanDone = YES;
+                            // Now that all the orphaned files have been
+                            // migrated to use iCloud sync we can kick off a
+                            // fresh document scan and find these files using a
+                            // meta data scan
+                            [weakSelf startDocumentScan];
+                        }
                     }];
                 };
+                orphanedFilesOpened++;
+                NSLog(@"Migrating document: %@", identifier);
                 [self openExistingManagedDocumentWithIdentifier:identifier];
             }
         }
@@ -306,6 +334,7 @@ static __strong APManagedDocumentManager* gInstance;
 - (void)_processDocumentWithIdentifier:(NSString*)identifier {
     if (identifier && ![_documentIdentifiers containsObject:identifier])
     {
+        NSLog(@"Processing Document: %@", identifier);
         [_documentIdentifiers addObject:identifier];
         NSDictionary* userInfo = [NSDictionary dictionaryWithObject:identifier forKey:@"documentIdentifier"];
         [[NSNotificationCenter defaultCenter] postNotificationName:APNewDocumentFound object:self userInfo:userInfo];
