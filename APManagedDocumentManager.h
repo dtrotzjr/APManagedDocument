@@ -49,9 +49,6 @@ extern NSString * const APNewDocumentFound;
 //          reside.
 @property (nonatomic, readonly) NSURL* documentsURL;
 
-// Public: Specifies the location that iCloud should use for transaction logs.
-- (NSURL*)transactionLogsURL;
-
 // Public: Generates a URL that indicates where the document is to be stored
 //          based on the current state of the document manager
 - (NSURL*)urlForDocumentWithIdentifier:(NSString*)identifier;

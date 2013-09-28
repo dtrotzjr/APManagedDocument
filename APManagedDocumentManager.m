@@ -119,14 +119,6 @@ static __strong APManagedDocumentManager* gInstance;
     return documentsURL;
 }
 
-- (NSURL*)transactionLogsURL {
-    NSURL* transactionLogsURL = [[NSFileManager defaultManager] URLForUbiquityContainerIdentifier:nil];
-    if (self.transactionLogsSubFolder.length > 0) {
-        transactionLogsURL = [transactionLogsURL URLByAppendingPathComponent:self.transactionLogsSubFolder];
-    }
-    return transactionLogsURL;
-}
-
 - (NSURL*)urlForDocumentWithIdentifier:(NSString*)identifier {
     NSString* fileName = identifier;
     if (self.documentsExtention.length > 0)
