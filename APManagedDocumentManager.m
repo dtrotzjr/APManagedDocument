@@ -25,6 +25,7 @@ static __strong APManagedDocumentManager* gInstance;
     id<NSObject,NSCopying,NSCoding> _currentUbiquityIdentityToken;
     void (^_documentOpenedOverride)(APManagedDocument*,BOOL);
     BOOL _orphanedLocalFileScanDone;
+    BOOL _ubiquitousSubpathPathValidated;
 }
 
 @end
@@ -98,6 +99,10 @@ static __strong APManagedDocumentManager* gInstance;
     }
 }
 
+- (BOOL)iCloudStoreAccessible {
+    return _currentUbiquityIdentityToken != nil;
+}
+
 - (void)_prepDocumentsFolder {
     NSURL* documentsURL = self.documentsURL;
     if (documentsURL && self.documentsSubFolder.length > 0) {
@@ -120,11 +125,39 @@ static __strong APManagedDocumentManager* gInstance;
     return documentsURL;
 }
 
-- (NSURL*)urlForDocumentWithIdentifier:(NSString*)identifier {
+- (NSURL*)ubiquitousURL {
+    NSURL* ubiquitousURL = [[NSFileManager defaultManager] URLForUbiquityContainerIdentifier:nil];
+    if (self.documentsSubFolder.length > 0) {
+        ubiquitousURL = [ubiquitousURL URLByAppendingPathComponent:self.documentsSubFolder];
+    }
+    return ubiquitousURL;
+}
+
+- (NSURL*)localURLForDocumentWithIdentifier:(NSString*)identifier {
     NSString* fileName = identifier;
     if (self.documentsExtention.length > 0)
         fileName = [NSString stringWithFormat:@"%@.%@", fileName, self.documentsExtention];
     return  [[self documentsURL] URLByAppendingPathComponent:fileName];
+}
+
+- (NSURL*)ubiquitousURLForDocumentWithIdentifier:(NSString*)identifier {
+    NSString* fileName = identifier;
+    if (self.documentsExtention.length > 0)
+        fileName = [NSString stringWithFormat:@"%@.%@", fileName, self.documentsExtention];
+    NSURL* ubiquitousURL = [self ubiquitousURL];
+    if (ubiquitousURL == nil)
+        @throw [NSException exceptionWithName:@"Invalid ubiquity URL" reason:@"iCloud not available. Cannot obtain the ubiquitous URL." userInfo:nil];
+    
+    // Ensure the subpath exists so we can put documents there.
+    if (!_ubiquitousSubpathPathValidated && ![[NSFileManager defaultManager] fileExistsAtPath:[ubiquitousURL path] isDirectory:NULL]) {
+        NSError* err = nil;
+        if(![[NSFileManager defaultManager] createDirectoryAtURL:ubiquitousURL withIntermediateDirectories:YES attributes:nil error:&err]) {
+            NSLog(@"Unable to create subpath in the ubiquitous store. %@", [err description]);
+        }
+    }
+    _ubiquitousSubpathPathValidated = YES;
+    
+    return  [ubiquitousURL URLByAppendingPathComponent:fileName];
 }
 
 - (APManagedDocument*)createNewManagedDocumentWithName:(NSString*)documentName {
@@ -147,7 +180,7 @@ static __strong APManagedDocumentManager* gInstance;
     BOOL success = NO;
     NSError* err = nil;
     __unsafe_unretained typeof(self) weakSelf = self;
-    NSURL* documentURL = [self urlForDocumentWithIdentifier:identifier];
+    NSURL* documentURL = nil;
     if (_currentUbiquityIdentityToken) {
         // Deleting ubiquitous content is a bit trickier...
         // First we open the document so that we can obtain the document's
@@ -155,6 +188,7 @@ static __strong APManagedDocumentManager* gInstance;
         // and perform the removeUbiquitousContentAndPersistentStoreAtURL method
         // to remove the ubiquitous content.
         // Finally we remove the local document package.
+        documentURL = [self ubiquitousURLForDocumentWithIdentifier:identifier];
         _documentOpenedOverride = ^(APManagedDocument* doc, BOOL success) {
             if (success) {
                 NSDictionary* options = doc.persistentStoreOptions;
@@ -183,6 +217,7 @@ static __strong APManagedDocumentManager* gInstance;
         [self openExistingManagedDocumentWithIdentifier:identifier];
     } else if([[NSFileManager defaultManager] fileExistsAtPath:[documentURL path]]) {
         // iCloud is not enabled right now so we simply remove the document.
+        documentURL = [self localURLForDocumentWithIdentifier:identifier];
         success = [[NSFileManager defaultManager] removeItemAtURL:documentURL error:&err];
         if (success) {
             [self startDocumentScan];
@@ -358,7 +393,7 @@ static __strong APManagedDocumentManager* gInstance;
 
 - (void)_scanForUbiquitousFiles {
         _documentQuery = [[NSMetadataQuery alloc] init];
-        [_documentQuery setSearchScopes:[NSArray arrayWithObject:NSMetadataQueryUbiquitousDataScope]];
+        [_documentQuery setSearchScopes:[NSArray arrayWithObject:NSMetadataQueryUbiquitousDocumentsScope]];
         [_documentQuery setPredicate:[NSPredicate predicateWithFormat:@"%K like %@",
                                         NSMetadataItemFSNameKey,
                                         @"*"]];
@@ -386,7 +421,7 @@ static __strong APManagedDocumentManager* gInstance;
 - (NSString*)_findIdentifierInPath:(NSString*)path {
     NSString* identifier = nil;
     NSError* error = nil;
-    NSString* searchPattern = [NSString stringWithFormat:@"([^/.]+_%@_[A-F0-9]{8}_[A-F0-9]{8})",self.documentSetIdentifier];
+    NSString* searchPattern = [NSString stringWithFormat:@"%@/(.+_%@_[A-F0-9]{8}_[A-F0-9]{8})",self.documentsSubFolder, self.documentSetIdentifier];
 
     NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:searchPattern
                                                                            options:NSRegularExpressionCaseInsensitive

@@ -42,16 +42,47 @@ static __strong NSString* gPersistentStoreName = @"persistentStore";
 
 - (id)initWithDocumentIdentifier:(NSString*)identifier {
     APManagedDocumentManager* manager = [APManagedDocumentManager sharedDocumentManager];
-    NSURL* documentURL = [manager urlForDocumentWithIdentifier:identifier];
-    self = [super initWithFileURL:documentURL];
+    NSURL* transientLocalURL = [manager localURLForDocumentWithIdentifier:identifier];
+    NSURL* permanentURL = transientLocalURL;
+    if ([manager iCloudStoreAccessible])
+        permanentURL = [manager ubiquitousURLForDocumentWithIdentifier:identifier];
+    
+    self = [super initWithFileURL:permanentURL];
     if (self != nil) {
         // Since both open and save will use the same completion handlers we
         // create a named block to call on completion
+        __unsafe_unretained typeof(self) weakSelf = self;
         void (^completionHandler)(BOOL) = ^(BOOL success) {
             if (success) {
-                dispatch_async(dispatch_get_main_queue(), ^{
+                if ([manager iCloudStoreAccessible]) {
+                    // We now need to set the document as Ubiquitous so that the
+                    // document's meta data syncs. This requires that we first
+                    // close the document.
+                    [weakSelf closeWithCompletionHandler:^(BOOL success){
+                        if (success) {
+                            dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
+                                NSError* err = nil;
+                                // We move it
+                                if([[NSFileManager defaultManager] setUbiquitous:YES itemAtURL:transientLocalURL destinationURL:permanentURL error:&err]) {
+                                    // And now we can reopen it.
+                                    [weakSelf openWithCompletionHandler:^(BOOL success){
+                                        if (success)
+                                            [manager _contextInitializedForDocument:self success:success];
+                                    }];
+                                } else {
+                                    NSLog(@"Failed to set the document as ubiquitous. %@", [err description]);
+                                }
+                            });
+                        }
+                    }];
+
+                } else {
+                    // In this case the ubiquitous store is not accessible so we
+                    // are done.
                     [manager _contextInitializedForDocument:self success:success];
-                });
+                }
+                
+
             } else {
                 NSLog(@"APManagedDocument failed to initialize.");
             }
@@ -59,10 +90,14 @@ static __strong NSString* gPersistentStoreName = @"persistentStore";
         
         self.persistentStoreOptions = [manager optionsForDocumentWithIdentifier:identifier];
         
-        if ([[NSFileManager defaultManager] fileExistsAtPath:[documentURL path]]) {
+        if ([[NSFileManager defaultManager] fileExistsAtPath:[permanentURL path]]) {
+            // The document exists already and we just need to open it.
             [self openWithCompletionHandler:completionHandler];
         }else {
-            [self saveToURL:documentURL forSaveOperation:UIDocumentSaveForCreating completionHandler:completionHandler];
+            // This is a new document so we save it to the local store first and
+            // then in the completion handler we will move it to the ubiquitous
+            // store if it is accesible.
+            [self saveToURL:transientLocalURL forSaveOperation:UIDocumentSaveForCreating completionHandler:completionHandler];
         }
         _documentIdentifier = identifier;
     }

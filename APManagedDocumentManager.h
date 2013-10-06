@@ -37,22 +37,35 @@ extern NSString * const APNewDocumentFound;
 // Public: Specifies the subdirectory where documents are stored. This path is
 //          relative to the current storage path which is dependent on whther
 //          iCloud is available or not. This parameter is optional but providing
-//          something here keeps your application's files nice and tidey on the
+//          something here keeps your application's files nice and tidy on the
 //          user's device.
 @property (nonatomic, copy) NSString* documentsSubFolder;
 
 // Public: Specifies where to store the Transaction Logs within the ubiquitous
 //          storage directory. The default for this value is 'TransactionLogs'
-@property (nonatomic, copy) NSString*transactionLogsSubFolder; // NSPersistentStoreUbiquitousContentURLKey 'CoreDataSupport'
+@property (nonatomic, copy) NSString*transactionLogsSubFolder;
 
 // Public: Specifies the URL for where the managed documents are expected to
-//          reside.
+//          reside. If iCloud is currently accessible it will be a ubiquitous URL
 @property (nonatomic, readonly) NSURL* documentsURL;
 
-// Public: Generates a URL that indicates where the document is to be stored
-//          based on the current state of the document manager
-- (NSURL*)urlForDocumentWithIdentifier:(NSString*)identifier;
+// Public: Generates a URL in the local sandbox that indicates where the
+//          document is to be stored based on the current state of the document
+//          manager
+- (NSURL*)localURLForDocumentWithIdentifier:(NSString*)identifier;
 
+// Public: Generates a URL in the ubiquitous container that indicates where the
+//          document is to be stored based on the current state of the document
+//          manager. Throws an exception if iCloud is unavailable. Be sure to
+//          determine the availability of iCloud first through the
+//          iCloudAccessible call
+- (NSURL*)ubiquitousURLForDocumentWithIdentifier:(NSString*)identifier;
+
+// Public: Returns the current state of the iCloud store
+- (BOOL)iCloudStoreAccessible;
+
+// Public: Returns a persistent store options dictionary that reflects the
+//          current accessibility state of the iCloud store.
 - (NSDictionary*)optionsForDocumentWithIdentifier:(NSString*)identifier;
 
 // Public: Specifies an identifier used to identify a document as part of the
