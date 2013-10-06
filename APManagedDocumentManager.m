@@ -144,15 +144,53 @@ static __strong APManagedDocumentManager* gInstance;
 }
 
 - (BOOL)deleteManagedDocumentWithIdentifier:(NSString*)identifier {
+    BOOL success = NO;
     NSError* err = nil;
+    __unsafe_unretained typeof(self) weakSelf = self;
     NSURL* documentURL = [self urlForDocumentWithIdentifier:identifier];
-    NSDictionary* options = [self optionsForDocumentWithIdentifier:identifier];
-    BOOL success = [NSPersistentStoreCoordinator removeUbiquitousContentAndPersistentStoreAtURL:documentURL options:options error:&err];
-    if (success) {
-        [self startDocumentScan];
-    }else {
-        NSLog(@"Failed to delete: %@", [err description]);
+    if (_currentUbiquityIdentityToken) {
+        // Deleting ubiquitous content is a bit trickier...
+        // First we open the document so that we can obtain the document's
+        // store URL. Once we have the store URL we close the document
+        // and perform the removeUbiquitousContentAndPersistentStoreAtURL method
+        // to remove the ubiquitous content.
+        // Finally we remove the local document package.
+        _documentOpenedOverride = ^(APManagedDocument* doc, BOOL success) {
+            if (success) {
+                NSDictionary* options = doc.persistentStoreOptions;
+                NSPersistentStore* store = [doc.managedObjectContext.persistentStoreCoordinator.persistentStores firstObject];
+                [doc closeWithCompletionHandler:^(BOOL success) {
+                    if(success) {
+                        NSError* err = nil;
+                        if ([NSPersistentStoreCoordinator removeUbiquitousContentAndPersistentStoreAtURL:store.URL options:options error:&err])
+                        {
+                            if([[NSFileManager defaultManager] fileExistsAtPath:[documentURL path]]) {
+                                success = [[NSFileManager defaultManager] removeItemAtURL:documentURL error:&err];
+                                if (success) {
+                                    [weakSelf startDocumentScan];
+                                }else {
+                                    NSLog(@"Failed to delete: %@", [err description]);
+                                }
+                            }
+                        } else {
+                            NSLog(@"FAILED: Remove Ubiquitous Content And Persistent Store: %@", [err description]);
+                        }
+                    }
+                }];
+            }
+        };
+        // Kicking off here an open will eventually land in the _documentOpenedOverride above
+        [self openExistingManagedDocumentWithIdentifier:identifier];
+    } else if([[NSFileManager defaultManager] fileExistsAtPath:[documentURL path]]) {
+        // iCloud is not enabled right now so we simply remove the document.
+        success = [[NSFileManager defaultManager] removeItemAtURL:documentURL error:&err];
+        if (success) {
+            [self startDocumentScan];
+        }else {
+            NSLog(@"Failed to delete: %@", [err description]);
+        }
     }
+
     return success;
 }
 
