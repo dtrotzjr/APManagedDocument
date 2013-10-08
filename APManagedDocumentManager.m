@@ -23,7 +23,6 @@ static __strong APManagedDocumentManager* gInstance;
     NSMutableArray* _documentIdentifiers;
     NSMetadataQuery* _documentQuery;
     id<NSObject,NSCopying,NSCoding> _currentUbiquityIdentityToken;
-    void (^_documentOpenedOverride)(APManagedDocument*,BOOL);
     BOOL _orphanedLocalFileScanDone;
     BOOL _ubiquitousSubpathPathValidated;
 }
@@ -81,13 +80,8 @@ static __strong APManagedDocumentManager* gInstance;
 }
 
 - (void)_contextInitializedForDocument:(APManagedDocument*)document success:(BOOL)success {
-    if (_documentOpenedOverride) {
-        _documentOpenedOverride(document, success);
-        _documentOpenedOverride = nil;
-    } else {
-        if ([self.documentDelegate respondsToSelector:@selector(documentInitialized:success:)]) {
-            [self.documentDelegate documentInitialized:document success:success];
-        }
+    if ([self.documentDelegate respondsToSelector:@selector(documentInitialized:success:)]) {
+        [self.documentDelegate documentInitialized:document success:success];
     }
 }
 
@@ -128,7 +122,7 @@ static __strong APManagedDocumentManager* gInstance;
 - (NSURL*)ubiquitousURL {
     NSURL* ubiquitousURL = [[NSFileManager defaultManager] URLForUbiquityContainerIdentifier:nil];
     if (self.documentsSubFolder.length > 0) {
-        ubiquitousURL = [ubiquitousURL URLByAppendingPathComponent:self.documentsSubFolder];
+        ubiquitousURL = [[ubiquitousURL URLByAppendingPathComponent:@"Documents"] URLByAppendingPathComponent:self.documentsSubFolder];
     }
     return ubiquitousURL;
 }
@@ -160,23 +154,77 @@ static __strong APManagedDocumentManager* gInstance;
     return  [ubiquitousURL URLByAppendingPathComponent:fileName];
 }
 
-- (APManagedDocument*)createNewManagedDocumentWithName:(NSString*)documentName {
+- (void)createNewDocumentWithName:(NSString*)documentName completionHandler:(void (^)(BOOL success, NSString* identifier))completionHandler {
     NSString* identifier = [NSString stringWithFormat:@"%@_%@_%@", documentName, self.documentSetIdentifier, [self _generateUniqueIdentifier]];
-    APManagedDocument* document = [[APManagedDocument alloc] initWithDocumentIdentifier:identifier];
-    if (document)
-        [self _processDocumentWithIdentifier:identifier];
-    return document;
+    NSURL* transientURL = [self localURLForDocumentWithIdentifier:identifier];
+    NSURL* permanentURL = transientURL;
+    if ([self iCloudStoreAccessible])
+        permanentURL = [self ubiquitousURLForDocumentWithIdentifier:identifier];
+    
+    UIManagedDocument* newDoc = [[UIManagedDocument alloc] initWithFileURL:permanentURL];
+    if (newDoc != nil) {
+        // Since both open and save will use the same completion handlers we
+        // create a named block to call on completion
+        void (^midCompletionHandler)(BOOL) = ^(BOOL success) {
+            if (success) {
+                if ([self iCloudStoreAccessible]) {
+                    // We now need to set the document as Ubiquitous so that the
+                    // document's meta data syncs. This requires that we first
+                    // close the document.
+                    [newDoc closeWithCompletionHandler:^(BOOL success){
+                        if (success) {
+                            dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
+                                NSError* err = nil;
+                                // We move it
+                                if([[NSFileManager defaultManager] setUbiquitous:YES itemAtURL:transientURL destinationURL:permanentURL error:&err]) {
+                                    if (completionHandler)
+                                        completionHandler(YES, identifier);
+                                    
+                                } else {
+                                    @throw [NSException exceptionWithName:@"APManagedDocumentFailedUbiquitous" reason:@"The document failed to move to the ubiquitous store!" userInfo:nil];
+                                }
+                            });
+                        }
+                    }];
+                } else {
+                    // This is a local file so we don't need to move it over
+                    // we just need to call the completion handler
+                    if (completionHandler) {
+                        completionHandler(success, identifier);
+                    }
+                }
+            } else {
+                @throw [NSException exceptionWithName:@"APManagedDocumentFailedInitialize" reason:@"The document failed to initialize!" userInfo:nil];
+            }
+        };
+        
+        if (![[NSFileManager defaultManager] fileExistsAtPath:[permanentURL path]]) {
+            if ([self iCloudStoreAccessible]) {
+                // Clear out the options we will set them again in the completion
+                // handler after we set the document ubiquitous otherwise the
+                // .nosync folder will not migrate over.
+                newDoc.persistentStoreOptions = nil;
+                
+            }else {
+                newDoc.persistentStoreOptions = [self optionsForDocumentWithIdentifier:identifier];
+            }
+            [newDoc saveToURL:transientURL forSaveOperation:UIDocumentSaveForCreating completionHandler:midCompletionHandler];
+        }else {
+            @throw [NSException exceptionWithName:@"APManagedDocumentExistsAlready" reason:@"The document with this identifier already exists!" userInfo:nil];
+        }
+    }
 }
 
 - (APManagedDocument*)openExistingManagedDocumentWithIdentifier:(NSString*)identifier {
-    APManagedDocument* doc = nil;
-    if ([_documentIdentifiers containsObject:identifier]) {
-        doc = [[APManagedDocument alloc] initWithDocumentIdentifier:identifier];
-    }
+    APManagedDocument* doc = [[APManagedDocument alloc] initExistingDocumentHavingIdentifier:identifier
+                                                                           completionHandler:
+                              ^(BOOL success, APManagedDocument* document){
+                                  [self _contextInitializedForDocument:document success:success];
+                              }];
     return doc;
 }
 
-- (BOOL)deleteManagedDocumentWithIdentifier:(NSString*)identifier {
+- (void)deleteManagedDocumentWithIdentifier:(NSString*)identifier {
     BOOL success = NO;
     NSError* err = nil;
     __unsafe_unretained typeof(self) weakSelf = self;
@@ -189,32 +237,32 @@ static __strong APManagedDocumentManager* gInstance;
         // to remove the ubiquitous content.
         // Finally we remove the local document package.
         documentURL = [self ubiquitousURLForDocumentWithIdentifier:identifier];
-        _documentOpenedOverride = ^(APManagedDocument* doc, BOOL success) {
-            if (success) {
-                NSDictionary* options = doc.persistentStoreOptions;
-                NSPersistentStore* store = [doc.managedObjectContext.persistentStoreCoordinator.persistentStores firstObject];
-                [doc closeWithCompletionHandler:^(BOOL success) {
-                    if(success) {
-                        NSError* err = nil;
-                        if ([NSPersistentStoreCoordinator removeUbiquitousContentAndPersistentStoreAtURL:store.URL options:options error:&err])
-                        {
-                            if([[NSFileManager defaultManager] fileExistsAtPath:[documentURL path]]) {
-                                success = [[NSFileManager defaultManager] removeItemAtURL:documentURL error:&err];
-                                if (success) {
-                                    [weakSelf startDocumentScan];
-                                }else {
-                                    NSLog(@"Failed to delete: %@", [err description]);
+        if ([_documentIdentifiers containsObject:identifier]) {
+            (void)[[APManagedDocument alloc] initExistingDocumentHavingIdentifier:identifier completionHandler:^(BOOL success, APManagedDocument* document){
+                if (success) {
+                    NSDictionary* options = document.persistentStoreOptions;
+                    NSPersistentStore* store = [document.managedObjectContext.persistentStoreCoordinator.persistentStores firstObject];
+                    [document closeWithCompletionHandler:^(BOOL success) {
+                        if(success) {
+                            NSError* err = nil;
+                            if ([NSPersistentStoreCoordinator removeUbiquitousContentAndPersistentStoreAtURL:store.URL options:options error:&err])
+                            {
+                                if([[NSFileManager defaultManager] fileExistsAtPath:[documentURL path]]) {
+                                    success = [[NSFileManager defaultManager] removeItemAtURL:documentURL error:&err];
+                                    if (success) {
+                                        [weakSelf startDocumentScan];
+                                    }else {
+                                        NSLog(@"Failed to delete: %@", [err description]);
+                                    }
                                 }
+                            } else {
+                                NSLog(@"FAILED: Remove Ubiquitous Content And Persistent Store: %@", [err description]);
                             }
-                        } else {
-                            NSLog(@"FAILED: Remove Ubiquitous Content And Persistent Store: %@", [err description]);
                         }
-                    }
-                }];
-            }
-        };
-        // Kicking off here an open will eventually land in the _documentOpenedOverride above
-        [self openExistingManagedDocumentWithIdentifier:identifier];
+                    }];
+                }
+            }];
+        }
     } else if([[NSFileManager defaultManager] fileExistsAtPath:[documentURL path]]) {
         // iCloud is not enabled right now so we simply remove the document.
         documentURL = [self localURLForDocumentWithIdentifier:identifier];
@@ -225,8 +273,6 @@ static __strong APManagedDocumentManager* gInstance;
             NSLog(@"Failed to delete: %@", [err description]);
         }
     }
-
-    return success;
 }
 
 - (void)prepareForMigrationToNewiCloudAccount {
@@ -272,8 +318,8 @@ static __strong APManagedDocumentManager* gInstance;
     if (_currentUbiquityIdentityToken != nil) {
         // We have iCloud access so we will do a metadata query
         [self stopDocumentScan];
-        if (!_orphanedLocalFileScanDone)
-            [self _migrateOrphanedLocalFiles];
+//        if (!_orphanedLocalFileScanDone)
+//            [self _migrateOrphanedLocalFiles];
         [self _scanForUbiquitousFiles];
     } else {
         // iCloud is currently unavailable (user is signed out or has disabled
@@ -366,10 +412,12 @@ static __strong APManagedDocumentManager* gInstance;
             // Determine if this is can be considered a local store
             NSString* identifier = [self _identifierIfURLIsForValidLocalStorePath:url];
             if (identifier){
+                NSLog(@"Migrating document: %@", identifier);
+                orphanedFilesOpened++;
                 // Opening and then closing the document is enough to get it moved over to the
                 // iCloud space.
-                _documentOpenedOverride = ^(APManagedDocument* doc, BOOL success) {
-                    [doc closeWithCompletionHandler:^(BOOL success){
+                (void)[[APManagedDocument alloc] initExistingDocumentHavingIdentifier:identifier completionHandler:^(BOOL success, APManagedDocument* document) {
+                    [document closeWithCompletionHandler:^(BOOL success){
                         if (!success)
                             NSLog(@"Something went wrong. The document failed to close");
                         orphanedFilesOpened--;
@@ -382,10 +430,7 @@ static __strong APManagedDocumentManager* gInstance;
                             [weakSelf startDocumentScan];
                         }
                     }];
-                };
-                orphanedFilesOpened++;
-                NSLog(@"Migrating document: %@", identifier);
-                [self openExistingManagedDocumentWithIdentifier:identifier];
+                }];
             }
         }
     }
@@ -426,10 +471,10 @@ static __strong APManagedDocumentManager* gInstance;
     NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:searchPattern
                                                                            options:NSRegularExpressionCaseInsensitive
                                                                              error:&error];
-    NSRange rangeOfFirstMatch = [regex rangeOfFirstMatchInString:path options:0 range:NSMakeRange(0, [path length])];
-    if (!NSEqualRanges(rangeOfFirstMatch, NSMakeRange(NSNotFound, 0))) {
-        identifier = [path substringWithRange:rangeOfFirstMatch];
-    }
+     NSTextCheckingResult* match = [regex firstMatchInString:path options:0 range:NSMakeRange(0, [path length])];
+     if (match && !NSEqualRanges([match rangeAtIndex:1], NSMakeRange(NSNotFound, 0))) {
+         identifier = [path substringWithRange:[match rangeAtIndex:1]];
+     }
     return identifier;
 }
 

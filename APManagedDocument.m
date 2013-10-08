@@ -40,69 +40,32 @@ static __strong NSString* gPersistentStoreName = @"persistentStore";
     }
 }
 
-- (id)initWithDocumentIdentifier:(NSString*)identifier {
+- (id)initExistingDocumentHavingIdentifier:(NSString*)identifier completionHandler:(void (^)(BOOL success, APManagedDocument* document))completionHandler {
     APManagedDocumentManager* manager = [APManagedDocumentManager sharedDocumentManager];
-    NSURL* transientLocalURL = [manager localURLForDocumentWithIdentifier:identifier];
-    NSURL* permanentURL = transientLocalURL;
+    NSURL* permanentURL = [manager localURLForDocumentWithIdentifier:identifier];
     if ([manager iCloudStoreAccessible])
         permanentURL = [manager ubiquitousURLForDocumentWithIdentifier:identifier];
     
     self = [super initWithFileURL:permanentURL];
     if (self != nil) {
-        // Since both open and save will use the same completion handlers we
-        // create a named block to call on completion
-        __unsafe_unretained typeof(self) weakSelf = self;
-        void (^completionHandler)(BOOL) = ^(BOOL success) {
-            if (success) {
-                if ([manager iCloudStoreAccessible]) {
-                    // We now need to set the document as Ubiquitous so that the
-                    // document's meta data syncs. This requires that we first
-                    // close the document.
-                    [weakSelf closeWithCompletionHandler:^(BOOL success){
-                        if (success) {
-                            dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
-                                NSError* err = nil;
-                                // We move it
-                                if([[NSFileManager defaultManager] setUbiquitous:YES itemAtURL:transientLocalURL destinationURL:permanentURL error:&err]) {
-                                    // And now we can reopen it.
-                                    [weakSelf openWithCompletionHandler:^(BOOL success){
-                                        if (success)
-                                            [manager _contextInitializedForDocument:self success:success];
-                                    }];
-                                } else {
-                                    NSLog(@"Failed to set the document as ubiquitous. %@", [err description]);
-                                }
-                            });
-                        }
-                    }];
-
-                } else {
-                    // In this case the ubiquitous store is not accessible so we
-                    // are done.
-                    [manager _contextInitializedForDocument:self success:success];
-                }
-                
-
-            } else {
-                NSLog(@"APManagedDocument failed to initialize.");
-            }
-        };
-        
         self.persistentStoreOptions = [manager optionsForDocumentWithIdentifier:identifier];
         
         if ([[NSFileManager defaultManager] fileExistsAtPath:[permanentURL path]]) {
             // The document exists already and we just need to open it.
-            [self openWithCompletionHandler:completionHandler];
+            __unsafe_unretained typeof(self) weakSelf = self;
+            [self openWithCompletionHandler:^(BOOL success) {
+                if (completionHandler)
+                    completionHandler(success, weakSelf);
+            }];
         }else {
-            // This is a new document so we save it to the local store first and
-            // then in the completion handler we will move it to the ubiquitous
-            // store if it is accesible.
-            [self saveToURL:transientLocalURL forSaveOperation:UIDocumentSaveForCreating completionHandler:completionHandler];
+            @throw [NSException exceptionWithName:@"APManagedDocumentMissing" reason:@"The document with this identifier does not exist!" userInfo:nil];
         }
         _documentIdentifier = identifier;
     }
     return self;
 }
+
+
 
 - (void)save {
     [self updateChangeCount:UIDocumentChangeDone];

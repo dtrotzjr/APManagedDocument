@@ -29,7 +29,7 @@ extern NSString * const APPersistentStoreCoordinatorStoresDidChangeNotification;
 - (id)initWithFileURL:(NSURL *)url;
 
 
-- (id)initWithDocumentIdentifier:(NSString*)identifier;
+- (id)initExistingDocumentHavingIdentifier:(NSString*)identifier completionHandler:(void (^)(BOOL success, APManagedDocument* document))completionHandler;
 
 - (void)save;
 

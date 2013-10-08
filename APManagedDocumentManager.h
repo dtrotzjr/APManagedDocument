@@ -65,7 +65,7 @@ extern NSString * const APNewDocumentFound;
 - (BOOL)iCloudStoreAccessible;
 
 // Public: Returns a persistent store options dictionary that reflects the
-//          current accessibility state of the iCloud store.
+//          current accessibility state of the iCloud store
 - (NSDictionary*)optionsForDocumentWithIdentifier:(NSString*)identifier;
 
 // Public: Specifies an identifier used to identify a document as part of the
@@ -81,8 +81,8 @@ extern NSString * const APNewDocumentFound;
 + (APManagedDocumentManager*)sharedDocumentManager;
 
 // Public: Creates a new managed document and manages it in regards to iCloud
-//          storage.
-- (APManagedDocument*)createNewManagedDocumentWithName:(NSString*)documentName;
+//          storage. The completion handler will have access to the document
+- (void)createNewDocumentWithName:(NSString*)documentName completionHandler:(void (^)(BOOL success, NSString* identifier))completionHandler;
 
 // Public: Opens an existing managed document and manages it in regards to
 //          iCloud storage.
@@ -90,7 +90,7 @@ extern NSString * const APNewDocumentFound;
 
 // Public: Deletes an existing managed document and kicks off a document scan
 //          after it is finished.
-- (BOOL)deleteManagedDocumentWithIdentifier:(NSString*)identifier;
+- (void)deleteManagedDocumentWithIdentifier:(NSString*)identifier;
 
 // Public: Kicks off a scan to find documents that this manager should track
 //          and manage.
