@@ -25,6 +25,11 @@ extern NSString * const APDocumentScanFinished;
 // Posted whenever a document scan was stopped prematurely.
 extern NSString * const APDocumentScanCancelled;
 
+// Posted whenever a document is deleted. The notification user data dictionary
+//          contains the identifier of the deleted document under the
+//          'APDocumentIdentifier' key.
+extern NSString * const APDocumentDeleted;
+
 // Posted whenever a new documenthas been found.
 //          userInfo dictionary contains an NSString object indicating the
 //          identifier of the newly found document.

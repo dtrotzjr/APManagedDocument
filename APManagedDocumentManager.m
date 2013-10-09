@@ -14,6 +14,7 @@ NSString * const APDocumentScanStarted          = @"APDocumentScanStarted";
 NSString * const APDocumentScanFinished         = @"APDocumentScanFinished";
 NSString * const APDocumentScanCancelled        = @"APDocumentScanCancelled";
 NSString * const APNewDocumentFound             = @"APNewDocumentFound";
+NSString * const APDocumentDeleted              = @"APDocumentDeleted";
 
 
 static __strong APManagedDocumentManager* gInstance;
@@ -250,6 +251,7 @@ static __strong APManagedDocumentManager* gInstance;
                                 if([[NSFileManager defaultManager] fileExistsAtPath:[documentURL path]]) {
                                     success = [[NSFileManager defaultManager] removeItemAtURL:documentURL error:&err];
                                     if (success) {
+                                        [[NSNotificationCenter defaultCenter] postNotificationName:APDocumentDeleted object:self userInfo:@{@"APDocumentIdentifier":identifier}];
                                         [weakSelf startDocumentScan];
                                     }else {
                                         NSLog(@"Failed to delete: %@", [err description]);
@@ -263,14 +265,18 @@ static __strong APManagedDocumentManager* gInstance;
                 }
             }];
         }
-    } else if([[NSFileManager defaultManager] fileExistsAtPath:[documentURL path]]) {
-        // iCloud is not enabled right now so we simply remove the document.
+    } else {
         documentURL = [self localURLForDocumentWithIdentifier:identifier];
-        success = [[NSFileManager defaultManager] removeItemAtURL:documentURL error:&err];
-        if (success) {
-            [self startDocumentScan];
-        }else {
-            NSLog(@"Failed to delete: %@", [err description]);
+        if([[NSFileManager defaultManager] fileExistsAtPath:[documentURL path]]) {
+            // iCloud is not enabled right now so we simply remove the document.
+            documentURL = [self localURLForDocumentWithIdentifier:identifier];
+            success = [[NSFileManager defaultManager] removeItemAtURL:documentURL error:&err];
+            if (success) {
+                [[NSNotificationCenter defaultCenter] postNotificationName:APDocumentDeleted object:self userInfo:@{@"APDocumentIdentifier":identifier}];
+                [self startDocumentScan];
+            }else {
+                NSLog(@"Failed to delete: %@", [err description]);
+            }
         }
     }
 }
