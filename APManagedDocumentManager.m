@@ -235,8 +235,8 @@ static __strong APManagedDocumentManager* gInstance;
         // First we open the document so that we can obtain the document's
         // store URL. Once we have the store URL we close the document
         // and perform the removeUbiquitousContentAndPersistentStoreAtURL method
-        // to remove the ubiquitous content.
-        // Finally we remove the local document package.
+        // to remove the ubiquitous content. Next we move the document package
+        // from the iCloud store. Finally we remove the local document package.
         documentURL = [self ubiquitousURLForDocumentWithIdentifier:identifier];
         if ([_documentIdentifiers containsObject:identifier]) {
             (void)[[APManagedDocument alloc] initExistingDocumentHavingIdentifier:identifier completionHandler:^(BOOL success, APManagedDocument* document){
@@ -249,12 +249,16 @@ static __strong APManagedDocumentManager* gInstance;
                             if ([NSPersistentStoreCoordinator removeUbiquitousContentAndPersistentStoreAtURL:store.URL options:options error:&err])
                             {
                                 if([[NSFileManager defaultManager] fileExistsAtPath:[documentURL path]]) {
-                                    success = [[NSFileManager defaultManager] removeItemAtURL:documentURL error:&err];
-                                    if (success) {
-                                        [[NSNotificationCenter defaultCenter] postNotificationName:APDocumentDeleted object:self userInfo:@{@"APDocumentIdentifier":identifier}];
-                                        [weakSelf startDocumentScan];
-                                    }else {
-                                        NSLog(@"Failed to delete: %@", [err description]);
+                                    // We need to move it from the Ubiquitous
+                                    // location so that iCloud does not restore
+                                    // the file for us.
+                                    NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+                                    NSURL* destinationURL = [NSURL fileURLWithPath:[paths objectAtIndex:0]];
+                                    if([[NSFileManager defaultManager] setUbiquitous:NO itemAtURL:documentURL  destinationURL:destinationURL error:&err])
+                                    {
+                                        // Now we can remove the item safely
+                                        success = [[NSFileManager defaultManager] removeItemAtURL:documentURL error:&err];
+                                        [weakSelf _handleDeleteResultForIdentifier:identifier success:success error:err];
                                     }
                                 }
                             } else {
@@ -271,13 +275,17 @@ static __strong APManagedDocumentManager* gInstance;
             // iCloud is not enabled right now so we simply remove the document.
             documentURL = [self localURLForDocumentWithIdentifier:identifier];
             success = [[NSFileManager defaultManager] removeItemAtURL:documentURL error:&err];
-            if (success) {
-                [[NSNotificationCenter defaultCenter] postNotificationName:APDocumentDeleted object:self userInfo:@{@"APDocumentIdentifier":identifier}];
-                [self startDocumentScan];
-            }else {
-                NSLog(@"Failed to delete: %@", [err description]);
-            }
+            [weakSelf _handleDeleteResultForIdentifier:identifier success:success error:err];
         }
+    }
+}
+
+- (void)_handleDeleteResultForIdentifier:(NSString*)identifier success:(BOOL)success error:err {
+    if (success) {
+        [[NSNotificationCenter defaultCenter] postNotificationName:APDocumentDeleted object:self userInfo:@{@"APDocumentIdentifier":identifier}];
+        [self startDocumentScan];
+    }else {
+        NSLog(@"Failed to delete: %@", [err description]);
     }
 }
 
