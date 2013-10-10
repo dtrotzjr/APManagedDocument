@@ -245,25 +245,29 @@ static __strong APManagedDocumentManager* gInstance;
                     NSPersistentStore* store = [document.managedObjectContext.persistentStoreCoordinator.persistentStores firstObject];
                     [document closeWithCompletionHandler:^(BOOL success) {
                         if(success) {
-                            NSError* err = nil;
-                            if ([NSPersistentStoreCoordinator removeUbiquitousContentAndPersistentStoreAtURL:store.URL options:options error:&err])
-                            {
-                                if([[NSFileManager defaultManager] fileExistsAtPath:[documentURL path]]) {
-                                    // We need to move it from the Ubiquitous
-                                    // location so that iCloud does not restore
-                                    // the file for us.
-                                    NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-                                    NSURL* destinationURL = [NSURL fileURLWithPath:[paths objectAtIndex:0]];
-                                    if([[NSFileManager defaultManager] setUbiquitous:NO itemAtURL:documentURL  destinationURL:destinationURL error:&err])
-                                    {
-                                        // Now we can remove the item safely
-                                        success = [[NSFileManager defaultManager] removeItemAtURL:documentURL error:&err];
-                                        [weakSelf _handleDeleteResultForIdentifier:identifier success:success error:err];
+                            dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
+                                NSError* err = nil;
+                                if ([NSPersistentStoreCoordinator removeUbiquitousContentAndPersistentStoreAtURL:store.URL options:options error:&err])
+                                {
+                                    if([[NSFileManager defaultManager] fileExistsAtPath:[documentURL path]]) {
+                                        // We need to move it from the Ubiquitous
+                                        // location so that iCloud does not restore
+                                        // the file for us.
+                                        NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+                                        NSURL* destinationURL = [[NSURL fileURLWithPath:[paths objectAtIndex:0]] URLByAppendingPathComponent:identifier];
+                                        if([[NSFileManager defaultManager] setUbiquitous:NO itemAtURL:documentURL  destinationURL:destinationURL error:&err])
+                                        {
+                                            // Now we can remove the item safely
+                                            BOOL success = [[NSFileManager defaultManager] removeItemAtURL:destinationURL error:&err];
+                                            [weakSelf _handleDeleteResultForIdentifier:identifier success:success error:err];
+                                        } else {
+                                            NSLog(@"Failed to delete: %@", [err description]);
+                                        }
                                     }
+                                } else {
+                                    NSLog(@"FAILED: Remove Ubiquitous Content And Persistent Store: %@", [err description]);
                                 }
-                            } else {
-                                NSLog(@"FAILED: Remove Ubiquitous Content And Persistent Store: %@", [err description]);
-                            }
+                            });
                         }
                     }];
                 }
@@ -284,7 +288,7 @@ static __strong APManagedDocumentManager* gInstance;
     if (success) {
         [[NSNotificationCenter defaultCenter] postNotificationName:APDocumentDeleted object:self userInfo:@{@"APDocumentIdentifier":identifier}];
         [self startDocumentScan];
-    }else {
+    } else {
         NSLog(@"Failed to delete: %@", [err description]);
     }
 }
