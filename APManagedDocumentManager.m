@@ -99,47 +99,47 @@ static __strong APManagedDocumentManager* gInstance;
 }
 
 - (void)_prepDocumentsFolder {
-    NSURL* documentsURL = self.documentsURL;
-    if (documentsURL && self.documentsSubFolder.length > 0) {
+    NSURL* localDocumentsURL = self.localDocumentsURL;
+    if (localDocumentsURL && self.documentsSubFolder.length > 0) {
         
-        if (![[NSFileManager defaultManager] fileExistsAtPath:[documentsURL path] isDirectory:nil]) {
+        if (![[NSFileManager defaultManager] fileExistsAtPath:[localDocumentsURL path] isDirectory:nil]) {
             NSError* error = nil;
-            if (![[NSFileManager defaultManager] createDirectoryAtPath:[documentsURL path] withIntermediateDirectories:YES attributes:nil error:&error]) {
-                NSLog(@"Failed to create Documents path: %@ - %@", [documentsURL path], [error description]);
+            if (![[NSFileManager defaultManager] createDirectoryAtPath:[localDocumentsURL path] withIntermediateDirectories:YES attributes:nil error:&error]) {
+                NSLog(@"Failed to create Documents path: %@ - %@", [localDocumentsURL path], [error description]);
             }
         }
     }
 }
 
-- (NSURL*)documentsURL {
+- (NSURL*)localDocumentsURL {
     NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-    NSURL* documentsURL = [NSURL fileURLWithPath:[paths objectAtIndex:0]];
+    NSURL* localDocumentsURL = [NSURL fileURLWithPath:[paths objectAtIndex:0]];
     if (self.documentsSubFolder.length > 0) {
-        documentsURL = [documentsURL URLByAppendingPathComponent:self.documentsSubFolder];
+        localDocumentsURL = [localDocumentsURL URLByAppendingPathComponent:self.documentsSubFolder];
     }
-    return documentsURL;
+    return localDocumentsURL;
 }
 
-- (NSURL*)ubiquitousURL {
-    NSURL* ubiquitousURL = [[NSFileManager defaultManager] URLForUbiquityContainerIdentifier:nil];
+- (NSURL*)ubiquitousDocumentsURL {
+    NSURL* ubiquitousDocumentsURL = [[NSFileManager defaultManager] URLForUbiquityContainerIdentifier:nil];
     if (self.documentsSubFolder.length > 0) {
-        ubiquitousURL = [[ubiquitousURL URLByAppendingPathComponent:@"Documents"] URLByAppendingPathComponent:self.documentsSubFolder];
+        ubiquitousDocumentsURL = [[ubiquitousDocumentsURL URLByAppendingPathComponent:@"Documents"] URLByAppendingPathComponent:self.documentsSubFolder];
     }
-    return ubiquitousURL;
+    return ubiquitousDocumentsURL;
 }
 
 - (NSURL*)localURLForDocumentWithIdentifier:(NSString*)identifier {
     NSString* fileName = identifier;
     if (self.documentsExtention.length > 0)
         fileName = [NSString stringWithFormat:@"%@.%@", fileName, self.documentsExtention];
-    return  [[self documentsURL] URLByAppendingPathComponent:fileName];
+    return  [[self localDocumentsURL] URLByAppendingPathComponent:fileName];
 }
 
 - (NSURL*)ubiquitousURLForDocumentWithIdentifier:(NSString*)identifier {
     NSString* fileName = identifier;
     if (self.documentsExtention.length > 0)
         fileName = [NSString stringWithFormat:@"%@.%@", fileName, self.documentsExtention];
-    NSURL* ubiquitousURL = [self ubiquitousURL];
+    NSURL* ubiquitousURL = [self ubiquitousDocumentsURL];
     if (ubiquitousURL == nil)
         @throw [NSException exceptionWithName:@"Invalid ubiquity URL" reason:@"iCloud not available. Cannot obtain the ubiquitous URL." userInfo:nil];
     
@@ -355,7 +355,7 @@ static __strong APManagedDocumentManager* gInstance;
 - (void)_scanForLocalFiles {
     NSFileManager* fileManager = [NSFileManager defaultManager];
     NSArray* contents =
-    [fileManager contentsOfDirectoryAtURL:self.documentsURL
+    [fileManager contentsOfDirectoryAtURL:self.localDocumentsURL
                                   includingPropertiesForKeys:nil
                                                      options:0
                                                        error:nil];
@@ -419,7 +419,7 @@ static __strong APManagedDocumentManager* gInstance;
     if ([[NSFileManager defaultManager] ubiquityIdentityToken]) {
         NSFileManager* fileManager = [NSFileManager defaultManager];
         NSArray* contents =
-        [fileManager contentsOfDirectoryAtURL:self.documentsURL
+        [fileManager contentsOfDirectoryAtURL:self.localDocumentsURL
                    includingPropertiesForKeys:nil
                                       options:0
                                         error:nil];
@@ -455,6 +455,7 @@ static __strong APManagedDocumentManager* gInstance;
 }
 
 - (void)_scanForUbiquitousFiles {
+        NSLog(@"Requesting scan for ubiquitous items...");
         _documentQuery = [[NSMetadataQuery alloc] init];
         [_documentQuery setSearchScopes:[NSArray arrayWithObject:NSMetadataQueryUbiquitousDocumentsScope]];
         [_documentQuery setPredicate:[NSPredicate predicateWithFormat:@"%K like %@",
@@ -502,6 +503,7 @@ static __strong APManagedDocumentManager* gInstance;
 
 - (void)_queryUpdated:(NSNotification*)notif {
     NSLog(@"Scan did update...");
+    [self _processCurrentQueryResults];
 }
 
 - (void)_queryGatheringProgress:(NSNotification*)notif {
@@ -509,17 +511,23 @@ static __strong APManagedDocumentManager* gInstance;
 }
 
 - (void)_queryFinished:(NSNotification*)notif {
+    NSLog(@"Scan did finish...");
+    [self _processCurrentQueryResults];
+    [[NSNotificationCenter defaultCenter] postNotificationName:APDocumentScanFinished object:self];
+}
+
+- (void)_processCurrentQueryResults {
     [_documentQuery disableUpdates];
     NSArray *results = [_documentQuery results];
-
+    NSLog(@"Found %d Items", results.count);
     for (NSMetadataItem *item in results) {
+        NSLog(@"Processing item %@", [item description]);
         NSURL *itemurl = [item valueForAttribute:NSMetadataItemURLKey];
         NSString* identifier = [self _findIdentifierInPath:[itemurl path]];
         [self _processDocumentWithIdentifier:identifier];
     }
-
+    
     [_documentQuery enableUpdates];
-    [[NSNotificationCenter defaultCenter] postNotificationName:APDocumentScanFinished object:self];
 }
 
 - (NSArray*)documentIdentifiers {

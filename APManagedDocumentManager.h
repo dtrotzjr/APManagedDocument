@@ -51,8 +51,12 @@ extern NSString * const APNewDocumentFound;
 @property (nonatomic, copy) NSString*transactionLogsSubFolder;
 
 // Public: Specifies the URL for where the managed documents are expected to
-//          reside. If iCloud is currently accessible it will be a ubiquitous URL
-@property (nonatomic, readonly) NSURL* documentsURL;
+//          reside when iCloud is not available.
+@property (nonatomic, readonly) NSURL* localDocumentsURL;
+
+// Public: Specifies the URL for where the managed documents are expected to
+//          reside when iCloud is available.
+@property (nonatomic, readonly) NSURL* ubiquitousDocumentsURL;
 
 // Public: Generates a URL in the local sandbox that indicates where the
 //          document is to be stored based on the current state of the document
