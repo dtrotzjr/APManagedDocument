@@ -60,12 +60,12 @@ static __strong APManagedDocumentManager* gInstance;
         } else {
             self.documentSetIdentifier = @"";
         }
-        [self _prepDocumentsFolder];
         _currentUbiquityIdentityToken = [[NSFileManager defaultManager] ubiquityIdentityToken];
         [[NSNotificationCenter defaultCenter] addObserver: self
                                                  selector: @selector (_iCloudAccountAvailabilityChanged:)
                                                      name: NSUbiquityIdentityDidChangeNotification
                                                    object: nil];
+        [self _prepDocumentsFolder];
     }
     return self;
 }
@@ -99,13 +99,15 @@ static __strong APManagedDocumentManager* gInstance;
 }
 
 - (void)_prepDocumentsFolder {
-    NSURL* localDocumentsURL = self.localDocumentsURL;
-    if (localDocumentsURL && self.documentsSubFolder.length > 0) {
+    NSURL* documentsURL = self.localDocumentsURL;
+    if (_currentUbiquityIdentityToken)
+        documentsURL = self.ubiquitousDocumentsURL;
+    if (documentsURL && self.documentsSubFolder.length > 0) {
         
-        if (![[NSFileManager defaultManager] fileExistsAtPath:[localDocumentsURL path] isDirectory:nil]) {
+        if (![[NSFileManager defaultManager] fileExistsAtPath:[documentsURL path] isDirectory:nil]) {
             NSError* error = nil;
-            if (![[NSFileManager defaultManager] createDirectoryAtPath:[localDocumentsURL path] withIntermediateDirectories:YES attributes:nil error:&error]) {
-                NSLog(@"Failed to create Documents path: %@ - %@", [localDocumentsURL path], [error description]);
+            if (![[NSFileManager defaultManager] createDirectoryAtPath:[documentsURL path] withIntermediateDirectories:YES attributes:nil error:&error]) {
+                NSLog(@"Failed to create Documents path: %@ - %@", [documentsURL path], [error description]);
             }
         }
     }
