@@ -38,27 +38,33 @@ static __strong APManagedDocumentManager* gInstance;
         NSBundle* mainBundle = [NSBundle mainBundle];
         NSString* transactionLogsSubFolder = [mainBundle objectForInfoDictionaryKey:@"APTransactionLogsSubFolder"];
         if (transactionLogsSubFolder) {
-            self.transactionLogsSubFolder = transactionLogsSubFolder;
+            _transactionLogsSubFolder = transactionLogsSubFolder;
         } else {
-            self.transactionLogsSubFolder = @"CoreDataSupport";
+            _transactionLogsSubFolder = @"CoreDataSupport";
         }
         NSString* documentsSubFolder = [mainBundle objectForInfoDictionaryKey:@"APDocumentsSubFolder"];
         if (documentsSubFolder) {
-            self.documentsSubFolder = documentsSubFolder;
+            _documentsSubFolder = documentsSubFolder;
         } else {
-            self.documentsSubFolder = @"managedDocuments";
+            _documentsSubFolder = @"managedDocuments";
         }
         NSString* documentSetIdentifier = [mainBundle objectForInfoDictionaryKey:@"APDocumentSetIdentifier"];
         if (documentSetIdentifier) {
-            self.documentSetIdentifier = documentSetIdentifier;
+            _documentSetIdentifier = documentSetIdentifier;
         } else {
-            self.documentSetIdentifier = @"APMD_DATA";
+            _documentSetIdentifier = @"APMD_DATA";
         }
         NSString* documentsExtention = [mainBundle objectForInfoDictionaryKey:@"APDocumentsExtention"];
         if (documentSetIdentifier) {
-            self.documentsExtention = documentsExtention;
+            _documentsExtention = documentsExtention;
         } else {
-            self.documentSetIdentifier = @"";
+            _documentSetIdentifier = @"";
+        }
+        NSString* managedObjectModelName = [mainBundle objectForInfoDictionaryKey:@"APManagedObjectModelName"];
+        if (managedObjectModelName) {
+            _managedObjectModelName = managedObjectModelName;
+        } else {
+            _managedObjectModelName = @"Model";
         }
         _currentUbiquityIdentityToken = [[NSFileManager defaultManager] ubiquityIdentityToken];
         [[NSNotificationCenter defaultCenter] addObserver: self
@@ -338,8 +344,8 @@ static __strong APManagedDocumentManager* gInstance;
     if (_currentUbiquityIdentityToken != nil) {
         // We have iCloud access so we will do a metadata query
         [self stopDocumentScan];
-//        if (!_orphanedLocalFileScanDone)
-//            [self _migrateOrphanedLocalFiles];
+        if (!_orphanedLocalFileScanDone)
+            [self _migrateOrphanedLocalFiles];
         [self _scanForUbiquitousFiles];
     } else {
         // iCloud is currently unavailable (user is signed out or has disabled
@@ -426,31 +432,12 @@ static __strong APManagedDocumentManager* gInstance;
                                       options:0
                                         error:nil];
         
-        __block int orphanedFilesOpened = 0;
-        __unsafe_unretained typeof(self) weakSelf = self;
         for (NSURL* url in contents) {
             // Determine if this is can be considered a local store
             NSString* identifier = [self _identifierIfURLIsForValidLocalStorePath:url];
             if (identifier){
                 NSLog(@"Migrating document: %@", identifier);
-                orphanedFilesOpened++;
-                // Opening and then closing the document is enough to get it moved over to the
-                // iCloud space.
-                (void)[[APManagedDocument alloc] initExistingDocumentHavingIdentifier:identifier completionHandler:^(BOOL success, APManagedDocument* document) {
-                    [document closeWithCompletionHandler:^(BOOL success){
-                        if (!success)
-                            NSLog(@"Something went wrong. The document failed to close");
-                        orphanedFilesOpened--;
-                        if (orphanedFilesOpened == 0) {
-                            weakSelf->_orphanedLocalFileScanDone = YES;
-                            // Now that all the orphaned files have been
-                            // migrated to use iCloud sync we can kick off a
-                            // fresh document scan and find these files using a
-                            // meta data scan
-                            [weakSelf startDocumentScan];
-                        }
-                    }];
-                }];
+                [APManagedDocument moveDocumentAtURL:url withIdentifier:identifier toUbiquityContainer:[self ubiquitousDocumentsURL]];
             }
         }
     }

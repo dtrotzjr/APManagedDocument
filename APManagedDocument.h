@@ -14,6 +14,10 @@ extern NSString * const APPersistentStoreCoordinatorStoresDidChangeNotification;
 
 @interface APManagedDocument : UIManagedDocument
 
++ (NSString*)persistentStoreName;
+
++ (void)moveDocumentAtURL:(NSURL*)sourceDocumentURL withIdentifier:(NSString*)identifier toUbiquityContainer:(NSURL*)ubiquityContainerURL;
+
 // Public: This is a unique identifier for a given document. No two documents
 //          can have the same unique identifier.
 @property (nonatomic, readonly) NSString* documentIdentifier;
@@ -32,6 +36,4 @@ extern NSString * const APPersistentStoreCoordinatorStoresDidChangeNotification;
 - (id)initExistingDocumentHavingIdentifier:(NSString*)identifier completionHandler:(void (^)(BOOL success, APManagedDocument* document))completionHandler;
 
 - (void)save;
-
-+ (NSString*)persistentStoreName;
 @end

@@ -44,11 +44,11 @@ extern NSString * const APNewDocumentFound;
 //          iCloud is available or not. This parameter is optional but providing
 //          something here keeps your application's files nice and tidy on the
 //          user's device.
-@property (nonatomic, copy) NSString* documentsSubFolder;
+@property (nonatomic, readonly) NSString* documentsSubFolder;
 
 // Public: Specifies where to store the Transaction Logs within the ubiquitous
 //          storage directory. The default for this value is 'TransactionLogs'
-@property (nonatomic, copy) NSString*transactionLogsSubFolder;
+@property (nonatomic, readonly) NSString*transactionLogsSubFolder;
 
 // Public: Specifies the URL for where the managed documents are expected to
 //          reside when iCloud is not available.
@@ -79,12 +79,17 @@ extern NSString * const APNewDocumentFound;
 
 // Public: Specifies an identifier used to identify a document as part of the
 //          user's set of documents. Defaults to "APMD_DATA".
-@property (nonatomic, copy) NSString* documentSetIdentifier;
+@property (nonatomic, readonly) NSString* documentSetIdentifier;
 
 // Public: Optional parameter to indicate what the document manager should use
 //          for a file extention for the managed documents it creates and
 //          manages. Defaults to an empty string
-@property (nonatomic, copy) NSString* documentsExtention;
+@property (nonatomic, readonly) NSString* documentsExtention;
+
+// Public: Specifies the name of the object model that is being used by the
+//          APManagedDocuments created by this manager. This is used for
+//          migration from local store to the cloud.
+@property (nonatomic, readonly) NSString* managedObjectModelName;
 
 // Public: A singleton object that is shared accross the application
 + (APManagedDocumentManager*)sharedDocumentManager;
