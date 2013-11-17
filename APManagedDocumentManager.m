@@ -26,6 +26,11 @@ static __strong APManagedDocumentManager* gInstance;
     id<NSObject,NSCopying,NSCoding> _currentUbiquityIdentityToken;
     BOOL _orphanedLocalFileScanDone;
     BOOL _ubiquitousSubpathPathValidated;
+    // The ubiquitous scan takes time to pick up newly migrated files
+    // so we will note migrated files here and expect to see them on a
+    // file scan.
+    NSMutableArray* _documentIdentifiersRequiredForFinishedScan;
+    BOOL _documentScanDelayed;
 }
 
 @end
@@ -71,6 +76,7 @@ static __strong APManagedDocumentManager* gInstance;
                                                  selector: @selector (_iCloudAccountAvailabilityChanged:)
                                                      name: NSUbiquityIdentityDidChangeNotification
                                                    object: nil];
+        _documentIdentifiersRequiredForFinishedScan = [NSMutableArray new];
         [self _prepDocumentsFolder];
     }
     return self;
@@ -185,7 +191,7 @@ static __strong APManagedDocumentManager* gInstance;
                             dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
                                 NSError* err = nil;
                                 // We move it
-                                if([[NSFileManager defaultManager] setUbiquitous:YES itemAtURL:transientURL destinationURL:permanentURL error:&err]) {
+                                if([[NSFileManager new] setUbiquitous:YES itemAtURL:transientURL destinationURL:permanentURL error:&err]) {
                                     if (completionHandler)
                                         completionHandler(YES, identifier);
                                     
@@ -437,6 +443,7 @@ static __strong APManagedDocumentManager* gInstance;
             NSString* identifier = [self _identifierIfURLIsForValidLocalStorePath:url];
             if (identifier){
                 NSLog(@"Migrating document: %@", identifier);
+                [_documentIdentifiersRequiredForFinishedScan addObject:identifier];
                 [APManagedDocument moveDocumentAtURL:url withIdentifier:identifier toUbiquityContainer:[self ubiquitousDocumentsURL]];
             }
         }
@@ -493,6 +500,10 @@ static __strong APManagedDocumentManager* gInstance;
 - (void)_queryUpdated:(NSNotification*)notif {
     NSLog(@"Scan did update...");
     [self _processCurrentQueryResults];
+    if (_documentScanDelayed && _documentIdentifiersRequiredForFinishedScan.count == 0) {
+        [[NSNotificationCenter defaultCenter] postNotificationName:APDocumentScanFinished object:self];
+        _documentScanDelayed = NO;
+    }
 }
 
 - (void)_queryGatheringProgress:(NSNotification*)notif {
@@ -502,7 +513,15 @@ static __strong APManagedDocumentManager* gInstance;
 - (void)_queryFinished:(NSNotification*)notif {
     NSLog(@"Scan did finish...");
     [self _processCurrentQueryResults];
-    [[NSNotificationCenter defaultCenter] postNotificationName:APDocumentScanFinished object:self];
+    // If we are not waiting on any
+    if (_documentIdentifiersRequiredForFinishedScan.count == 0) {
+        [[NSNotificationCenter defaultCenter] postNotificationName:APDocumentScanFinished object:self];
+    } else {
+        // We are expecting more updates from the meta data query so we will
+        // flag that here and post the APDocumentScanFinished after we have
+        // actually seen all the documents we are expecting to be posted.
+        _documentScanDelayed = YES;
+    }
 }
 
 - (void)_processCurrentQueryResults {
@@ -514,9 +533,11 @@ static __strong APManagedDocumentManager* gInstance;
         NSURL *itemurl = [item valueForAttribute:NSMetadataItemURLKey];
         NSString* identifier = [self _findIdentifierInPath:[itemurl path]];
         [self _processDocumentWithIdentifier:identifier];
+        [_documentIdentifiersRequiredForFinishedScan removeObject:identifier];
     }
     
     [_documentQuery enableUpdates];
+    
 }
 
 - (NSArray*)documentIdentifiers {
